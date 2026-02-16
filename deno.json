@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["deno.ns", "deno.window", "esnext"]
+  },
+  "unstable": ["sloppy-imports"],
+  "imports": {
+    "@std/assert": "jsr:@std/assert@^1"
+  }
+}

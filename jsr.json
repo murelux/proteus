@@ -1,0 +1,22 @@
+{
+  "name": "@quill/proteus",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./src/index.ts",
+    "./extractor": "./src/extractor.ts",
+    "./detector": "./src/detector.ts",
+    "./validator": "./src/validator.ts"
+  },
+  "publish": {
+    "include": ["src/", "pkg/", "README.md", "LICENSE"],
+    "exclude": [
+      "tests/*.ts",
+      "tests/*.test.ts",
+      "tests/benchmarks/",
+      "cli/",
+      "crates/",
+      "node_modules/",
+      "!pkg/"
+    ]
+  }
+}

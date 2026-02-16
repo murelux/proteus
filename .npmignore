@@ -1,0 +1,31 @@
+# Tests
+tests/
+
+# Rust source & build intermediates
+crates/
+**/target/
+**/*.rs.bk
+Cargo.lock
+
+# Worker (demo / deployment)
+worker/
+wrangler.json
+
+# Dev config
+biome.json
+tsconfig.json
+vitest.config.ts
+jsr.json
+.github/
+
+# Lock files
+bun.lock
+deno.lock
+
+# Misc
+.DS_Store
+*.local
+*.log
+node_modules/
+.gitignore
+.npmignore
