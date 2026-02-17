@@ -36,7 +36,7 @@ export function validate<T>(data: unknown, schema: v.GenericSchema<unknown, T>):
 
   const issues = result.issues.map((issue: v.BaseIssue<unknown>) => ({
     message: issue.message,
-    path: issue.path?.map((p: { key: string | number | symbol }) => p.key).join("."),
+    path: issue.path?.map((p) => String(p.key)).join("."),
   }));
 
   throw new ValidationError(
