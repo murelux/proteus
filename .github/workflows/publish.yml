@@ -165,7 +165,7 @@ jobs:
 
       - name: Publish to JSR
         if: steps.jsr_check.outputs.exists == 'false'
-        run: deno publish --allow-dirty
+        run: deno publish --allow-dirty --config jsr.json
 
   release:
     name: GitHub Release
