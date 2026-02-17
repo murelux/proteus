@@ -34,13 +34,13 @@ export function validate<T>(data: unknown, schema: v.GenericSchema<unknown, T>):
     return result.output;
   }
 
-  const issues = result.issues.map((issue) => ({
+  const issues = result.issues.map((issue: v.BaseIssue<unknown>) => ({
     message: issue.message,
-    path: issue.path?.map((p) => p.key).join("."),
+    path: issue.path?.map((p: { key: string | number | symbol }) => p.key).join("."),
   }));
 
   throw new ValidationError(
-    `Front matter validation failed: ${issues.map((i) => i.message).join("; ")}`,
+    `Front matter validation failed: ${issues.map((i: { message: string }) => i.message).join("; ")}`,
     issues,
   );
 }
