@@ -1,6 +1,9 @@
 {
   "name": "@quill/proteus",
   "version": "0.1.0",
+  "imports": {
+    "valibot": "npm:valibot@^1.0.0"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./extractor": "./src/extractor.ts",
