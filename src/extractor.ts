@@ -42,9 +42,7 @@ export function extractFrontMatter(
 
   // Strip UTF-8 BOM — editors like Windows Notepad prepend \uFEFF which
   // would prevent the opening delimiter from matching.
-  if (source.charCodeAt(0) === 0xfeff) {
-    source = source.slice(1);
-  }
+  const input = source.charCodeAt(0) === 0xfeff ? source.slice(1) : source;
 
   // Validate delimiter pairs.
   for (const { open, close } of delimiters) {
@@ -59,12 +57,12 @@ export function extractFrontMatter(
   // Only normalise line endings in the region we need (not the full source).
   let openMatched = false;
   for (const pair of delimiters) {
-    const result = tryExtract(source, pair);
+    const result = tryExtract(input, pair);
     if (result !== undefined) {
       return result;
     }
     // Track whether the opening delimiter matched at all.
-    if (source.startsWith(`${pair.open}\n`) || source.startsWith(`${pair.open}\r\n`)) {
+    if (input.startsWith(`${pair.open}\n`) || input.startsWith(`${pair.open}\r\n`)) {
       openMatched = true;
     }
   }
@@ -75,7 +73,7 @@ export function extractFrontMatter(
     // Collect only the close delimiters that pair with the matched open.
     const matchedOpens = new Set(
       delimiters
-        .filter((d) => source.startsWith(`${d.open}\n`) || source.startsWith(`${d.open}\r\n`))
+        .filter((d) => input.startsWith(`${d.open}\n`) || input.startsWith(`${d.open}\r\n`))
         .map((d) => d.open),
     );
     const closes = [
@@ -103,17 +101,16 @@ function tryExtract(source: string, pair: DelimiterPair): ExtractionResult | und
   }
 
   // Skip past `open` + newline (handle both \r\n and \n).
-  const openEnd = source[open.length + 1] === "\n" ? open.length + 2 : open.length + 1;
+  // Check if the char right after `open` is \r (indicating \r\n), not \n.
+  const openEnd = source[open.length] === "\r" ? open.length + 2 : open.length + 1;
 
   // Search for the closing delimiter on its own line.
   // Start from openEnd - 1 so the closing delimiter is found even when the
   // front matter body is completely empty (e.g. "---\n---\n").
-  let closeIdx = source.indexOf(`\n${close}`, openEnd - 1);
-  if (closeIdx === -1) {
-    // Also try \r\n before close.
-    closeIdx = source.indexOf(`\r\n${close}`, openEnd - 1);
-    if (closeIdx !== -1) closeIdx += 1; // advance past \r so closeIdx points to \n
-  }
+  // Search for the closing delimiter on its own line.
+  // The close delimiter must be followed by \n, \r\n, or EOF — nothing else
+  // on the same line. This prevents false matches like `---extra text`.
+  const closeIdx = findCloseDelimiter(source, close, openEnd);
 
   if (closeIdx === -1) {
     // Close delimiter not found — let the next pair be tried.
@@ -134,4 +131,35 @@ function tryExtract(source: string, pair: DelimiterPair): ExtractionResult | und
   const content = source.slice(bodyStart);
 
   return { rawData, content, delimiter: pair };
+}
+
+/**
+ * Find the closing delimiter starting at `searchFrom`, requiring that the
+ * delimiter occupies its own line (preceded by `\n` and followed by `\n`,
+ * `\r\n`, or EOF).
+ */
+function findCloseDelimiter(source: string, close: string, searchFrom: number): number {
+  let pos = searchFrom - 1;
+  for (;;) {
+    let idx = source.indexOf(`\n${close}`, pos);
+    if (idx === -1) {
+      // Also try \r\n before close.
+      idx = source.indexOf(`\r\n${close}`, pos);
+      if (idx !== -1) idx += 1; // advance past \r so idx points to \n
+    }
+    if (idx === -1) return -1;
+
+    // Check that the char immediately after the close delimiter is \n, \r\n or EOF.
+    const afterClose = idx + 1 + close.length;
+    if (
+      afterClose >= source.length || // EOF
+      source[afterClose] === "\n" || // \n
+      (source[afterClose] === "\r" && source[afterClose + 1] === "\n") // \r\n
+    ) {
+      return idx;
+    }
+
+    // Not a valid close — advance and keep searching.
+    pos = idx + 1;
+  }
 }

@@ -37,6 +37,27 @@ export interface WasmParsers {
   stringify_toml(value: unknown): string;
 }
 
+const REQUIRED_EXPORTS: (keyof WasmParsers)[] = [
+  "parse_yaml",
+  "parse_json",
+  "parse_toml",
+  "stringify_yaml",
+  "stringify_json",
+  "stringify_toml",
+];
+
+/** Verify that a loaded module exposes all expected functions. */
+function validateWasmModule(mod: unknown): asserts mod is WasmParsers {
+  for (const name of REQUIRED_EXPORTS) {
+    if (typeof (mod as Record<string, unknown>)[name] !== "function") {
+      throw new Error(
+        `WASM module is missing expected export "${name}". ` +
+          "The binary may be corrupted or built from an incompatible version.",
+      );
+    }
+  }
+}
+
 /**
  * Initialise and return the WASM parser module (async).
  *
@@ -142,11 +163,23 @@ async function loadWasm(): Promise<WasmParsers> {
   try {
     // Bundler-friendly import (works in Vitest, Vite, Cloudflare Workers, etc.)
     const mod = await import("../pkg/quill_matter_wasm.js");
+    validateWasmModule(mod);
     wasmModule = mod;
-    return mod as WasmParsers;
-  } catch {
+    return mod;
+  } catch (_bundlerErr) {
     // Fallback: manually load the WASM binary (Bun, Deno)
-    return loadWasmDirect();
+    try {
+      return await loadWasmDirect();
+    } catch (directErr) {
+      const hint =
+        "Ensure the WASM binary exists at pkg/quill_matter_wasm_bg.wasm " +
+        "and was built with `bun run build:wasm`. " +
+        "If running under a bundler, check that vite-plugin-wasm (or equivalent) is configured.";
+      throw new Error(
+        `Failed to load WASM module via both bundler and direct paths. ${hint}`,
+        { cause: directErr },
+      );
+    }
   }
 }
 
@@ -155,8 +188,25 @@ async function loadWasmDirect(): Promise<WasmParsers> {
 
   // Resolve the .wasm path using web-standard `URL` constructor.
   // Works in Bun, Deno, and any environment with `import.meta.url`.
-  const wasmUrl = new URL("../pkg/quill_matter_wasm_bg.wasm", import.meta.url);
-  const wasmBytes = await readWasmFile(wasmUrl);
+  let wasmUrl: URL;
+  try {
+    wasmUrl = new URL("../pkg/quill_matter_wasm_bg.wasm", import.meta.url);
+  } catch (err) {
+    throw new Error(
+      "Failed to resolve WASM binary path: `import.meta.url` may not be available in this runtime.",
+      { cause: err },
+    );
+  }
+
+  let wasmBytes: ArrayBuffer;
+  try {
+    wasmBytes = await readWasmFile(wasmUrl);
+  } catch (err) {
+    throw new Error(
+      `Failed to read WASM binary from ${wasmUrl.href}. Ensure the file exists and is accessible.`,
+      { cause: err },
+    );
+  }
 
   const wasmImports = {
     "./quill_matter_wasm_bg.js": bgModule,
@@ -171,5 +221,6 @@ async function loadWasmDirect(): Promise<WasmParsers> {
   }
 
   wasmModule = bgModule;
-  return bgModule as WasmParsers;
+  validateWasmModule(bgModule);
+  return bgModule;
 }

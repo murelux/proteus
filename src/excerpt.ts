@@ -35,7 +35,7 @@ export function extractExcerpt(
 
   // Fallback: extract first paragraph
   // A paragraph is text separated by blank lines
-  const paragraphs = trimmed.split(/\n\s*\n/);
+  const paragraphs = trimmed.split(/\r?\n\s*\r?\n/);
   const firstParagraph = paragraphs[0]?.trim();
 
   // Skip if first "paragraph" is a heading alone

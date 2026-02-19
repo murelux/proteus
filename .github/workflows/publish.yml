@@ -33,7 +33,7 @@ jobs:
             ~/.cargo/git
             ~/.cargo/bin
             crates/parser-wasm/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('crates/parser-wasm/Cargo.lock') }}
+          key: cargo-${{ runner.os }}-${{ hashFiles('crates/parser-wasm/Cargo.toml') }}
           restore-keys: cargo-${{ runner.os }}-
 
       - name: Install wasm-pack
@@ -124,8 +124,11 @@ jobs:
       - name: Cache Deno dependencies
         run: deno install
 
+      - name: Type-check core library (Deno)
+        run: deno task check
+
       - name: Run Deno tests
-        run: deno test --no-check --allow-read --allow-write tests/deno.test.ts
+        run: deno task test
 
   publish-jsr:
     name: Publish to JSR

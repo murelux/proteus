@@ -166,7 +166,7 @@ const md = await stringifyFrontMatter(
 | `stringifyFrontMatter(data, content, options?)`       | Async serialize to Markdown                    |
 | `stringifyFrontMatterSync(data, content, options?)`   | Sync serialize, requires `initWasm()` first    |
 | `readFrontMatter(path, options?)`                     | Read `string \| URL` (incl. HTTP) and parse    |
-| `readFrontMatterMany(paths, options?)`                | Read multiple files in parallel                |
+| `readFrontMatterMany(paths, options?)`                | Read multiple files in parallel (errors isolated per file) |
 | `hasFrontMatter(source, delimiters?)`                 | Quick check, **no WASM loaded**                |
 | `detectFormat(rawData, delimiter)`                    | Format detection, **no WASM loaded**           |
 | `extractFrontMatter(source, delimiters?)`             | Extract raw text, **no WASM loaded**           |
@@ -187,7 +187,7 @@ type ParseResult<T> = ParseResultSuccess<T> | ParseResultEmpty | ParseResultErro
 | `ParseResultEmpty`      | `isEmpty === true`   | `{}`   | Original text  | `format`                            |
 | `ParseResultError`      | `error !== undefined`| `{}`   | Remaining body | `format`, `rawData`, `error`        |
 
-### `ParseOptions<T>`
+### `ParseOptions`
 
 | Option       | Type                         | Default                           | Description                                     |
 |:-------------|:-----------------------------|:----------------------------------|:------------------------------------------------|
@@ -224,6 +224,8 @@ The main entry point registers WASM loading and Valibot lazy-loading logic. The 
 | `@quill/proteus/extractor`   | `extractFrontMatter()` | None         |
 | `@quill/proteus/detector`    | `detectFormat()`       | None         |
 | `@quill/proteus/validator`   | `validate()`           | valibot      |
+| `@quill/proteus/sanitizer`   | `sanitizeKeys()`       | None         |
+| `@quill/proteus/stringify`   | `stringifyFrontMatter()` | WASM       |
 
 ## CLI
 
@@ -248,6 +250,7 @@ proteus validate post.md
 | `-j, --json`                | Compact JSON output (default)             |
 | `-p, --pretty`              | Pretty-printed JSON output                |
 | `-h, --help`                | Help information                          |
+| `--`                        | Treat remaining arguments as positionals  |
 
 ## Security
 
@@ -256,16 +259,16 @@ proteus validate post.md
 | **Prototype pollution guard** | Recursively filters `__proto__` and `prototype` keys; `constructor` is kept (attack chain blocked by `prototype` filter) |
 | **Input/output size limit**   | 1 MB each for parse input and serialization output (UTF-8 bytes), enforced in both TS and Rust layers |
 | **Error message sanitization** | In `strict: false` mode, error messages strip file paths and stack traces, truncated to 300 chars |
+| **Security response headers** | Worker responses include `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy` |
+| **Slug validation**           | Worker GET endpoint validates slug format (alphanumeric, hyphens, underscores, dots, slashes) and blocks path traversal |
 
 ## Cloudflare Workers
 
-`worker/index.ts` is a ready-to-deploy example Worker. It uses `WebAssembly.instantiate()` to statically import the precompiled `.wasm` file and injects it via `_preloadWasmModule()`, skipping runtime dynamic loading.
+See the deployment guide in your language:
 
-```bash
-bunx wrangler deploy
-```
-
-The prebuilt WASM is included in the `pkg/` directory — no Rust toolchain needed for deployment.
+- [English](doc/English/cloudflare/workers-deployment-guide.md)
+- [中文](doc/中文/cloudflare/workers-部署指南.md)
+- [日本語](doc/日本語/cloudflare/workers-デプロイガイド.md)
 
 ## Known Limitations
 

@@ -1,6 +1,6 @@
 {
-  "name": "@quills/proteus",
-  "version": "0.1.0",
+  "name": "@quill/proteus",
+  "version": "0.1.1",
   "description": "Parse YAML, JSON, and TOML front matter from Markdown files — powered by Rust WASM",
   "type": "module",
   "bin": {
@@ -30,6 +30,18 @@
       "bun": "./src/validator.ts",
       "deno": "./src/validator.ts",
       "default": "./src/validator.ts"
+    },
+    "./sanitizer": {
+      "workerd": "./src/sanitizer.ts",
+      "bun": "./src/sanitizer.ts",
+      "deno": "./src/sanitizer.ts",
+      "default": "./src/sanitizer.ts"
+    },
+    "./stringify": {
+      "workerd": "./src/stringify.ts",
+      "bun": "./src/stringify.ts",
+      "deno": "./src/stringify.ts",
+      "default": "./src/stringify.ts"
     }
   },
   "files": [
@@ -44,14 +56,15 @@
     "deno": ">=2.0"
   },
   "scripts": {
-    "build": "bun install",
+    "build": "bun run build:wasm",
     "build:wasm": "wasm-pack build crates/parser-wasm --target bundler --out-dir ../../pkg --release",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "vitest run",
-    "test:deno": "deno test --allow-read --allow-write tests/deno.test.ts",
+    "test:deno": "deno task test",
     "test:watch": "vitest",
     "bench": "vitest bench",
+    "typecheck": "deno task check",
     "lint": "biome check .",
     "format": "biome format --write .",
     "clean": "rimraf crates/parser-wasm/target pkg",
@@ -84,7 +97,8 @@
     "valibot": "^1.0.0",
     "vite-plugin-wasm": "^3.5.0",
     "vitest": "^4.0.0",
-    "wasm-pack": "^0.14.0"
+    "wasm-pack": "^0.14.0",
+    "wrangler": "^4.0.0"
   },
   "peerDependencies": {
     "valibot": ">=1.0.0"

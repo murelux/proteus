@@ -10,11 +10,6 @@ export default defineConfig({
       include: ["tests/benchmarks/**/*.bench.ts"],
     },
   },
-  resolve: {
-    alias: {
-      "@": "./src",
-    },
-  },
   optimizeDeps: {
     exclude: ["quill_matter_wasm"],
   },

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sanitizeKeys } from "../src/sanitizer.js";
+import type { SanitizeOptions } from "../src/sanitizer.js";
 
 describe("sanitizeKeys", () => {
   it("should strip __proto__ key", () => {
@@ -92,5 +93,120 @@ describe("sanitizeKeys", () => {
     const result = sanitizeKeys(raw) as Record<string, Record<string, Record<string, unknown>>>;
     expect(result.level1.level2.safe).toBe("value");
     expect(Object.hasOwn(result.level1.level2, "__proto__")).toBe(false);
+  });
+
+  // ------------------------------------------------------------------
+  // SanitizeOptions tests
+  // ------------------------------------------------------------------
+
+  it("should strip constructor when stripConstructor is true", () => {
+    const raw = Object.create(null);
+    raw.title = "Hello";
+    raw.constructor = "Builder Pattern";
+
+    const opts: SanitizeOptions = { stripConstructor: true };
+    const result = sanitizeKeys(raw, opts) as Record<string, unknown>;
+    expect(result).toEqual({ title: "Hello" });
+    expect(Object.hasOwn(result, "constructor")).toBe(false);
+  });
+
+  it("should keep constructor by default (no options)", () => {
+    const raw = Object.create(null);
+    raw.constructor = "SomeClass";
+    raw.name = "test";
+
+    const result = sanitizeKeys(raw) as Record<string, unknown>;
+    expect(result.constructor).toBe("SomeClass");
+    expect(result.name).toBe("test");
+  });
+
+  it("should strip nested constructor when stripConstructor is true", () => {
+    const raw = Object.create(null);
+    raw.meta = Object.create(null);
+    raw.meta.constructor = { prototype: { polluted: true } };
+    raw.meta.safe = "value";
+
+    const opts: SanitizeOptions = { stripConstructor: true };
+    const result = sanitizeKeys(raw, opts) as Record<string, Record<string, unknown>>;
+    expect(Object.hasOwn(result.meta, "constructor")).toBe(false);
+    expect(result.meta.safe).toBe("value");
+  });
+
+  // ------------------------------------------------------------------
+  // toString / valueOf — these are legitimate keys and should NOT be stripped
+  // ------------------------------------------------------------------
+
+  it("should preserve toString key (legitimate data)", () => {
+    const raw = Object.create(null);
+    raw.toString = "custom string representation";
+    raw.name = "test";
+
+    const result = sanitizeKeys(raw) as Record<string, unknown>;
+    expect(result.toString).toBe("custom string representation");
+    expect(result.name).toBe("test");
+  });
+
+  it("should preserve valueOf key (legitimate data)", () => {
+    const raw = Object.create(null);
+    raw.valueOf = 42;
+    raw.label = "test";
+
+    const result = sanitizeKeys(raw) as Record<string, unknown>;
+    expect(result.valueOf).toBe(42);
+    expect(result.label).toBe("test");
+  });
+
+  // ------------------------------------------------------------------
+  // Deep mixed arrays/objects
+  // ------------------------------------------------------------------
+
+  it("should sanitize deeply mixed arrays and objects", () => {
+    const inner = Object.create(null);
+    inner.safe = "ok";
+    inner.__proto__ = { bad: true };
+
+    const input = {
+      items: [
+        { name: "a" },
+        [inner, { nested: [{ __proto__: "evil" }] }],
+        "plain string",
+        42,
+      ],
+    };
+
+    const result = sanitizeKeys(input) as Record<string, unknown>;
+    const items = result.items as unknown[];
+    expect((items[0] as Record<string, unknown>).name).toBe("a");
+
+    const innerArr = items[1] as unknown[];
+    const sanitisedInner = innerArr[0] as Record<string, unknown>;
+    expect(sanitisedInner.safe).toBe("ok");
+    expect(Object.hasOwn(sanitisedInner, "__proto__")).toBe(false);
+
+    const nestedArr = (innerArr[1] as Record<string, unknown>).nested as unknown[];
+    expect(Object.hasOwn(nestedArr[0] as Record<string, unknown>, "__proto__")).toBe(false);
+
+    expect(items[2]).toBe("plain string");
+    expect(items[3]).toBe(42);
+  });
+
+  it("should handle object with only dangerous keys", () => {
+    const raw = Object.create(null);
+    raw.__proto__ = "evil";
+    raw.prototype = "also evil";
+
+    const result = sanitizeKeys(raw) as Record<string, unknown>;
+    expect(result).toEqual({});
+  });
+
+  it("should handle arrays containing null and undefined", () => {
+    const input = [null, undefined, { title: "ok", __proto__: "bad" }, "str"];
+    const result = sanitizeKeys(input) as unknown[];
+    expect(result[0]).toBeNull();
+    expect(result[1]).toBeUndefined();
+    const obj = result[2] as Record<string, unknown>;
+    expect(obj.title).toBe("ok");
+    expect(Object.hasOwn(obj, "__proto__")).toBe(false);
+    expect(result[3]).toBe("str");
   });
 });

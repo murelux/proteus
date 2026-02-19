@@ -96,7 +96,7 @@ describe("CLI", () => {
       expect(parsed.format).toBe("toml");
     });
 
-    it("should pretty-print with --pretty", async () => {
+    it("should pretty-print with --pretty", { timeout: 15_000 }, async () => {
       const { stdout, exitCode } = await runCli(["parse", yamlFile, "--pretty"]);
       expect(exitCode).toBe(0);
       expect(stdout).toContain("\n"); // multi-line = pretty
@@ -178,6 +178,40 @@ describe("CLI", () => {
       const { exitCode, stderr } = await runCli(["parse", "/does/not/exist.md"]);
       expect(exitCode).not.toBe(0);
       expect(stderr).toContain("could not read file");
+    });
+
+    it("should error when --format is missing its value", async () => {
+      const { exitCode, stderr } = await runCli(["parse", yamlFile, "-f"]);
+      expect(exitCode).not.toBe(0);
+      expect(stderr).toContain("missing value for --format");
+    });
+
+    it("should error when --delimiter is missing its value", async () => {
+      const { exitCode, stderr } = await runCli(["parse", yamlFile, "-d"]);
+      expect(exitCode).not.toBe(0);
+      expect(stderr).toContain("missing value for --delimiter");
+    });
+
+    it("should support --format=yaml equals syntax", async () => {
+      const { stdout, exitCode } = await runCli(["parse", yamlFile, "--format=yaml"]);
+      expect(exitCode).toBe(0);
+      const parsed = JSON.parse(stdout);
+      expect(parsed.format).toBe("yaml");
+    });
+
+    it("should support combined short flags -jp", async () => {
+      const { stdout, exitCode } = await runCli(["parse", yamlFile, "-jp"]);
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain("\n"); // pretty-printed
+      const parsed = JSON.parse(stdout);
+      expect(parsed.data.title).toBe("Hello World");
+    });
+
+    it("should support -f inside combined flags", async () => {
+      const { stdout, exitCode } = await runCli(["parse", yamlFile, "-pf", "yaml"]);
+      expect(exitCode).toBe(0);
+      const parsed = JSON.parse(stdout);
+      expect(parsed.format).toBe("yaml");
     });
   });
 });

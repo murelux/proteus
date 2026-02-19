@@ -17,6 +17,16 @@ const FORMAT_DELIMITERS: Record<FrontMatterFormat, DelimiterPair> = {
 // Public API
 // ---------------------------------------------------------------------------
 
+/** Validate that `data` is a non-empty plain object. Returns `true` if empty (caller should return content as-is). */
+function validateData(data: Record<string, unknown>): boolean {
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    throw new FrontMatterError(
+      `Expected a plain object for front matter data, got ${Array.isArray(data) ? "array" : typeof data}`,
+    );
+  }
+  return Object.keys(data).length === 0;
+}
+
 /**
  * Stringify data and content into a Markdown string with front matter.
  *
@@ -47,15 +57,7 @@ export async function stringifyFrontMatter(
   content: string,
   options?: StringifyOptions,
 ): Promise<string> {
-  // Skip front matter block entirely when data is empty.
-  if (data === null || typeof data !== "object" || Array.isArray(data)) {
-    throw new FrontMatterError(
-      `Expected a plain object for front matter data, got ${Array.isArray(data) ? "array" : typeof data}`,
-    );
-  }
-  if (Object.keys(data).length === 0) {
-    return content;
-  }
+  if (validateData(data)) return content;
 
   const format = options?.format ?? "yaml";
   const delimiter = options?.delimiter ?? FORMAT_DELIMITERS[format];
@@ -78,15 +80,7 @@ export function stringifyFrontMatterSync(
   content: string,
   options?: StringifyOptions,
 ): string {
-  // Skip front matter block entirely when data is empty.
-  if (data === null || typeof data !== "object" || Array.isArray(data)) {
-    throw new FrontMatterError(
-      `Expected a plain object for front matter data, got ${Array.isArray(data) ? "array" : typeof data}`,
-    );
-  }
-  if (Object.keys(data).length === 0) {
-    return content;
-  }
+  if (validateData(data)) return content;
 
   const format = options?.format ?? "yaml";
   const delimiter = options?.delimiter ?? FORMAT_DELIMITERS[format];
@@ -147,5 +141,7 @@ function assembleMarkdown(frontMatter: string, content: string, delimiter: Delim
     parts.push(content);
   }
 
-  return `${parts.join("\n")}\n`;
+  // End with a single trailing newline — avoid double newline when content is empty.
+  const result = parts.join("\n");
+  return result.endsWith("\n") ? result : `${result}\n`;
 }

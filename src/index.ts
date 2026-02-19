@@ -77,9 +77,26 @@ function lazyValidateSync<T>(data: unknown, schema: AnySchema): T {
  * Both the TS layer and the Rust WASM layer enforce the same byte-level limit. */
 const MAX_INPUT_SIZE = 1_048_576;
 
-/** Byte length of a string (UTF-8). */
-const encoder = new TextEncoder();
-const byteLength = (s: string): number => encoder.encode(s).byteLength;
+/** Maximum HTTP response size to read into memory (2 MB).
+ * Prevents memory exhaustion from large remote responses before the parse-level check. */
+const MAX_FETCH_SIZE = 2_097_152;
+
+/** Default HTTP fetch timeout in milliseconds (30 seconds). */
+const FETCH_TIMEOUT_MS = 30_000;
+
+/** Maximum number of concurrent fetch requests for `readFrontMatterMany`. */
+const MAX_CONCURRENCY = 8;
+
+/**
+ * Byte length of a string (UTF-8).
+ *
+ * Uses `TextEncoder` which is available in all target runtimes
+ * (Bun, Deno, Cloudflare Workers, modern browsers).
+ */
+const byteLength: (s: string) => number = (() => {
+  const encoder = new TextEncoder();
+  return (s: string): number => encoder.encode(s).byteLength;
+})();
 
 // ---------------------------------------------------------------------------
 // Quick detection
@@ -122,10 +139,26 @@ export function hasFrontMatter(
 
   for (const { open, close } of delimiters) {
     if (s.startsWith(`${open}\n`) || s.startsWith(`${open}\r\n`)) {
-      // Look for the closing delimiter on its own line.
+      // Look for the closing delimiter on its own line, followed by \n, \r\n or EOF.
       const openEnd = s[open.length] === "\r" ? open.length + 2 : open.length + 1;
-      if (s.indexOf(`\n${close}`, openEnd - 1) !== -1) return true;
-      if (s.indexOf(`\r\n${close}`, openEnd - 1) !== -1) return true;
+      let pos = openEnd - 1;
+      for (;;) {
+        let idx = s.indexOf(`\n${close}`, pos);
+        if (idx === -1) {
+          idx = s.indexOf(`\r\n${close}`, pos);
+          if (idx !== -1) idx += 1;
+        }
+        if (idx === -1) break;
+        const afterClose = idx + 1 + close.length;
+        if (
+          afterClose >= s.length ||
+          s[afterClose] === "\n" ||
+          (s[afterClose] === "\r" && s[afterClose + 1] === "\n")
+        ) {
+          return true;
+        }
+        pos = idx + 1;
+      }
     }
   }
   return false;
@@ -138,7 +171,7 @@ export function hasFrontMatter(
 /**
  * Options for `parseFrontMatter` and `parseFrontMatterSync`.
  */
-export interface ParseOptions<_T = Record<string, unknown>> {
+export interface ParseOptions {
   /**
    * Optional Valibot schema to validate the parsed data against.
    * When provided, the returned `data` is typed & validated.
@@ -208,7 +241,7 @@ export interface ParseOptions<_T = Record<string, unknown>> {
  */
 export async function parseFrontMatter<T = Record<string, unknown>>(
   source: string,
-  options?: ParseOptions<T>,
+  options?: ParseOptions,
 ): Promise<ParseResult<T>> {
   return parseFrontMatterCore<T>(source, options, {
     getWasm: () => getWasmParsers(),
@@ -233,7 +266,7 @@ export async function parseFrontMatter<T = Record<string, unknown>>(
  */
 export function parseFrontMatterSync<T = Record<string, unknown>>(
   source: string,
-  options?: ParseOptions<T>,
+  options?: ParseOptions,
 ): ParseResult<T> {
   return parseFrontMatterCore<T>(source, options, {
     getWasm: () => getWasmParsersSync(),
@@ -256,10 +289,15 @@ interface ParseCallbacks<T> {
  *
  * The `callbacks` parameter abstracts away the only two differences:
  * how to obtain the WASM module and how to run validation.
+ *
+ * SAFETY: The sync entry-point (`parseFrontMatterSync`) injects synchronous
+ * callbacks (`getWasmParsersSync`, `lazyValidateSync`) so `rawOrPromise` is
+ * never a `Promise`. The `instanceof Promise` branch only executes in the
+ * async path. Do not change the callbacks without preserving this invariant.
  */
 function parseFrontMatterCore<T = Record<string, unknown>>(
   source: string,
-  options: ParseOptions<T> | undefined,
+  options: ParseOptions | undefined,
   callbacks: ParseCallbacks<T>,
 ): ParseResult<T> | Promise<ParseResult<T>> {
   const size = byteLength(source);
@@ -320,7 +358,13 @@ function parseFrontMatterCore<T = Record<string, unknown>>(
   }
 }
 
-/** Resolve parsed data, reusing pre-parsed JSON when possible. */
+/**
+ * Resolve parsed data, reusing pre-parsed JSON when possible.
+ *
+ * SAFETY NOTE: Even when the JSON fast path returns pre-parsed data that
+ * bypasses WASM, the caller (`parseFrontMatterCore`) ALWAYS runs
+ * `sanitizeKeys()` on the result. Do not remove/skip that call.
+ */
 function resolveRawData<T>(
   extraction: ExtractionResult,
   detection: DetectionResult,
@@ -388,12 +432,18 @@ function handleError(
   };
 }
 
-/** Strip file paths, stack traces, and internal details from error messages. */
-function sanitizeErrorMessage(message: string): string {
-  // Strip absolute/relative file paths (Unix and Windows)
-  let sanitized = message.replace(/(?:[A-Za-z]:)?[/\\][\w./-]+/g, "<path>");
+/** Strip file paths, stack traces, and internal details from error messages.
+ * @internal Exported for reuse in the Worker entry-point. */
+export function sanitizeErrorMessage(message: string): string {
+  // Strip absolute file paths — Windows (C:\...) and Unix (/...).
+  // Supports spaces, unicode chars, and common special characters in paths.
+  let sanitized = message.replace(/(?:[A-Za-z]:)?[/\\](?:[^\s:*?"<>|\n]| (?=[^\s]))+/g, "<path>");
+  // Strip relative paths like ../foo/bar or ./foo
+  sanitized = sanitized.replace(/\.{1,2}[/\\](?:[^\s:*?"<>|\n]| (?=[^\s]))+/g, "<path>");
   // Strip stack trace lines
   sanitized = sanitized.replace(/\n\s+at\s+.+/g, "");
+  // Strip Rust panic details ("panicked at ...", "thread '...'")
+  sanitized = sanitized.replace(/thread\s+'[^']*'\s+panicked\s+at\s+[^\n]*/g, "<internal error>");
   // Truncate to prevent excessive error detail exposure
   if (sanitized.length > 300) {
     sanitized = `${sanitized.slice(0, 300)}…`;
@@ -455,24 +505,59 @@ declare const Deno: { readTextFile(path: string | URL): Promise<string> } | unde
  */
 export async function readFrontMatter<T = Record<string, unknown>>(
   path: string | URL,
-  options?: ParseOptions<T>,
+  options?: ParseOptions,
 ): Promise<ParseResult<T>> {
   const content = await readFileContent(path);
   return parseFrontMatter<T>(content, options);
 }
 
 /**
- * Read and parse multiple files in parallel.
+ * Read and parse multiple files with concurrency control.
+ *
+ * Limits parallel operations to avoid resource exhaustion when processing
+ * many URLs. Local file reads are also gated for consistency.
+ *
+ * Individual file errors are caught and returned as `ParseResultError`
+ * entries so that one failing file does not reject the entire batch.
  *
  * @param paths - Array of file paths or URLs.
  * @param options - Parse options (shared across all files).
+ * @param concurrency - Maximum number of parallel operations (default: 8).
  * @returns Array of results in the same order as inputs.
  */
 export async function readFrontMatterMany<T = Record<string, unknown>>(
   paths: (string | URL)[],
-  options?: ParseOptions<T>,
+  options?: ParseOptions,
+  concurrency = MAX_CONCURRENCY,
 ): Promise<ParseResult<T>[]> {
-  return Promise.all(paths.map((p) => readFrontMatter<T>(p, options)));
+  const limit = Math.max(1, Math.min(concurrency, paths.length));
+  const results: ParseResult<T>[] = new Array(paths.length);
+  // SAFETY: `nextIdx++` is safe without synchronisation because JavaScript
+  // is single-threaded. Each async worker yields only at `await` boundaries,
+  // and the post-increment is atomic within a single turn of the event loop.
+  let nextIdx = 0;
+
+  async function worker(): Promise<void> {
+    while (nextIdx < paths.length) {
+      const idx = nextIdx++;
+      try {
+        results[idx] = await readFrontMatter<T>(paths[idx], options);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        results[idx] = {
+          data: {} as Record<string, never>,
+          content: "",
+          format: options?.format ?? "yaml",
+          isEmpty: false,
+          error: new FrontMatterError(message),
+          rawData: "",
+        } satisfies ParseResultError as ParseResult<T>;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: limit }, () => worker()));
+  return results;
 }
 
 async function readFileContent(path: string | URL): Promise<string> {
@@ -481,10 +566,69 @@ async function readFileContent(path: string | URL): Promise<string> {
     (path instanceof URL && (path.protocol === "http:" || path.protocol === "https:")) ||
     (typeof path === "string" && /^https?:/.test(path))
   ) {
-    const res = await fetch(path);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(path, { signal: controller.signal });
+    } catch (err) {
+      clearTimeout(timeout);
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error(`Fetch timed out after ${FETCH_TIMEOUT_MS}ms: ${String(path)}`);
+      }
+      throw err;
+    }
+    clearTimeout(timeout);
+
     if (!res.ok) {
       throw new Error(`Failed to fetch ${String(path)}: ${res.status} ${res.statusText}`);
     }
+
+    // Guard against unexpectedly large responses before reading the full body.
+    const contentLength = res.headers.get("content-length");
+    if (contentLength && Number.parseInt(contentLength, 10) > MAX_FETCH_SIZE) {
+      throw new Error(
+        `Response too large (${contentLength} bytes, max ${MAX_FETCH_SIZE}): ${String(path)}`,
+      );
+    }
+
+    // Validate Content-Type is text-like.
+    // NOTE: `application/octet-stream` is intentionally excluded — binary data
+    // should not be silently decoded as UTF-8 text.
+    const ct = res.headers.get("content-type") ?? "";
+    if (ct && !/(text\/|application\/(json|toml|yaml|x-yaml|markdown)|charset=)/i.test(ct)) {
+      throw new Error(
+        `Unexpected Content-Type "${ct.split(";")[0]}" from ${String(path)} (expected text)`,
+      );
+    }
+
+    // Stream-read with a size cap to prevent memory exhaustion.
+    if (res.body) {
+      const reader = res.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        received += value.byteLength;
+        if (received > MAX_FETCH_SIZE) {
+          reader.cancel();
+          throw new Error(
+            `Response body exceeded ${MAX_FETCH_SIZE} bytes from ${String(path)}`,
+          );
+        }
+        chunks.push(value);
+      }
+      const merged = new Uint8Array(received);
+      let offset = 0;
+      for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return new TextDecoder().decode(merged);
+    }
+
+    // Fallback for environments without ReadableStream body
     return res.text();
   }
 

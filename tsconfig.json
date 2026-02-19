@@ -11,11 +11,8 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    },
     "types": ["@types/bun"]
   },
-  "include": ["src/**/*", "tests/**/*", "cli/**/*"],
+  "include": ["src/**/*", "tests/**/*", "cli/**/*", "worker/**/*"],
   "exclude": ["node_modules", "dist", "pkg", "crates"]
 }

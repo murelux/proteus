@@ -30,6 +30,12 @@ pkg/.gitignore
 *.swo
 *.sublime-workspace
 
+# AI agent skills (local-only, installed via `bunx skills`)
+.agents/
+
+# Documentation (local drafts, not yet published)
+doc/
+
 # OS
 Thumbs.db
 Desktop.ini
