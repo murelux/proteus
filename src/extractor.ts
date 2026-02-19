@@ -107,7 +107,6 @@ function tryExtract(source: string, pair: DelimiterPair): ExtractionResult | und
   // Search for the closing delimiter on its own line.
   // Start from openEnd - 1 so the closing delimiter is found even when the
   // front matter body is completely empty (e.g. "---\n---\n").
-  // Search for the closing delimiter on its own line.
   // The close delimiter must be followed by \n, \r\n, or EOF — nothing else
   // on the same line. This prevents false matches like `---extra text`.
   const closeIdx = findCloseDelimiter(source, close, openEnd);

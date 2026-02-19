@@ -20,8 +20,9 @@ const FORMAT_DELIMITERS: Record<FrontMatterFormat, DelimiterPair> = {
 /** Validate that `data` is a non-empty plain object. Returns `true` if empty (caller should return content as-is). */
 function validateData(data: Record<string, unknown>): boolean {
   if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    const actual = data === null ? "null" : Array.isArray(data) ? "array" : typeof data;
     throw new FrontMatterError(
-      `Expected a plain object for front matter data, got ${Array.isArray(data) ? "array" : typeof data}`,
+      `Expected a plain object for front matter data, got ${actual}`,
     );
   }
   return Object.keys(data).length === 0;

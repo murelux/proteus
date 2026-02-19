@@ -33,6 +33,16 @@ export interface SanitizeOptions {
 }
 
 const BASE_DANGEROUS_KEYS = new Set(["__proto__", "prototype"]);
+
+/**
+ * NOTE on JSON.parse and `__proto__`: JSON.parse() creates `__proto__` as a
+ * regular own property (not affecting the prototype chain). However, consumers
+ * using `Object.assign({}, result.data)` can still be exploited because
+ * `Object.assign` triggers the setter for `__proto__` on the target object.
+ * `sanitizeKeys` handles this correctly: `Object.keys()` enumerates own
+ * properties including `__proto__`, and `isSafe` / `sanitizeDeep` will detect
+ * and strip it.
+ */
 const STRICT_DANGEROUS_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 
 /**
@@ -52,6 +62,7 @@ export class DepthExceededError extends FrontMatterError {
   constructor() {
     super("Sanitization depth limit exceeded (max 512 levels of nesting)");
     this.name = "DepthExceededError";
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
@@ -62,6 +73,14 @@ export class DepthExceededError extends FrontMatterError {
  * NOTE: Both `isSafe` and `sanitizeDeep` independently enforce `MAX_DEPTH`.
  * If a tree exceeds the depth limit, `DepthExceededError` is thrown during
  * the `isSafe` check — before `sanitizeDeep` is ever reached.
+ *
+ * ASYMMETRY NOTE: When a dangerous key is found at any depth, `isSafe`
+ * returns `false` immediately (short-circuits) without descending further.
+ * The subsequent `sanitizeDeep` call will then traverse the full tree with
+ * its own independent depth tracking. This is intentional: `isSafe` is an
+ * optimistic fast-path that only needs to detect "any dangerous key exists",
+ * while `sanitizeDeep` is the thorough pass that strips keys and enforces
+ * depth limits during cloning.
  */
 function isSafe(obj: unknown, dangerousKeys: Set<string>, depth = 0): boolean {
   if (depth > MAX_DEPTH) throw new DepthExceededError();

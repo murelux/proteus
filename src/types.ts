@@ -126,6 +126,7 @@ export class FrontMatterError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "FrontMatterError";
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
@@ -134,6 +135,7 @@ export class ExtractionError extends FrontMatterError {
   constructor(message: string) {
     super(message);
     this.name = "ExtractionError";
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
@@ -151,6 +153,7 @@ export class ParseError extends FrontMatterError {
     this.format = format;
     this.line = line;
     this.column = column;
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
@@ -162,5 +165,6 @@ export class ValidationError extends FrontMatterError {
     super(message);
     this.name = "ValidationError";
     this.issues = issues;
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }

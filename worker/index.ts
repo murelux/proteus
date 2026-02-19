@@ -16,6 +16,10 @@ interface Env {
 /** Maximum allowed request body size (1 MB). */
 const MAX_BODY_SIZE = 1_048_576;
 
+/** Cached TextEncoder / TextDecoder instances for the worker. */
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
 /** Allowed slug characters: alphanumeric, hyphens, underscores, dots, slashes.
  * Blocks path traversal sequences (".." consecutive dots). */
 const SLUG_PATTERN = /^[a-zA-Z0-9](?:[a-zA-Z0-9\-_/]|\.(?!\.))*$/;
@@ -76,7 +80,12 @@ const ready = (async () => {
   // Seed the generic loader cache so `getWasmParsers()` skips dynamic loading.
   // biome-ignore lint/suspicious/noExplicitAny: wasm-bindgen generated module shape
   _preloadWasmModule(bgModule as any);
-})();
+})().catch((err) => {
+  // Log initialization failure to prevent unhandled promise rejection.
+  // The fetch handler will await `ready` and return a 503 on failure.
+  console.error("WASM init failed:", err instanceof Error ? err.message : String(err));
+  throw err;
+});
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -98,11 +107,28 @@ export default {
 
     // 1. CORS preflight
     if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: { ...cors } });
+      return new Response(null, {
+        status: 204,
+        headers: { ...cors, "Access-Control-Max-Age": "86400" },
+      });
     }
 
     // 2. Existing Markdown parsing
     if (request.method === "POST") {
+      // Validate Content-Type: only accept text/* and application/json.
+      const contentType = request.headers.get("content-type") ?? "";
+      if (
+        contentType &&
+        !contentType.startsWith("text/") &&
+        !contentType.startsWith("application/json") &&
+        !contentType.startsWith("application/x-www-form-urlencoded")
+      ) {
+        return Response.json(
+          { error: `Unsupported Content-Type: ${contentType.split(";")[0]}` },
+          { status: 415, headers: { ...cors, ...securityHeaders } },
+        );
+      }
+
       try {
         // Fast-reject: use Content-Length as an early hint (untrusted).
         const contentLength = request.headers.get("content-length");
@@ -139,10 +165,10 @@ export default {
             merged.set(chunk, offset);
             offset += chunk.byteLength;
           }
-          markdown = new TextDecoder().decode(merged);
+          markdown = textDecoder.decode(merged);
         } else {
           markdown = await request.text();
-          const byteLength = new TextEncoder().encode(markdown).byteLength;
+          const byteLength = textEncoder.encode(markdown).byteLength;
           if (byteLength > MAX_BODY_SIZE) {
             return Response.json(
               { error: `Request body too large (max: ${MAX_BODY_SIZE} bytes)` },
@@ -194,8 +220,28 @@ export default {
           );
         }
 
-        const index = JSON.parse(indexRaw) as { key: string; slug?: string }[];
-        const entry = index.find((e) => e.slug === slug);
+        let index: unknown;
+        try {
+          index = JSON.parse(indexRaw);
+        } catch {
+          console.error("Failed to parse _index from KV");
+          return Response.json(
+            { error: "Internal server error" },
+            { status: 500, headers: { ...cors, ...securityHeaders } },
+          );
+        }
+
+        if (!Array.isArray(index)) {
+          console.error("_index is not an array");
+          return Response.json(
+            { error: "Internal server error" },
+            { status: 500, headers: { ...cors, ...securityHeaders } },
+          );
+        }
+
+        const entry = (index as { key: string; slug?: string }[]).find((e) =>
+          e && typeof e === "object" && e.slug === slug
+        );
 
         if (!entry) {
           return Response.json(

@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S bun
 
 import { detectFormat, extractFrontMatter, initWasm, parseFrontMatterSync } from "../src/index.js";
 import type { DelimiterPair, FrontMatterFormat } from "../src/types.js";
@@ -7,7 +7,7 @@ import type { DelimiterPair, FrontMatterFormat } from "../src/types.js";
 // Runtime detection & Polyfills
 // ---------------------------------------------------------------------------
 
-declare const Bun: { argv: string[]; file(path: string): { text(): Promise<string> } } | undefined;
+declare const Bun: { argv: string[]; file(path: string): { text(): Promise<string>; exists(): Promise<boolean> } } | undefined;
 declare const Deno:
   | { args: string[]; readTextFile(path: string): Promise<string>; exit(code?: number): never }
   | undefined;

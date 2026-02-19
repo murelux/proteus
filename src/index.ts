@@ -81,7 +81,11 @@ const MAX_INPUT_SIZE = 1_048_576;
  * Prevents memory exhaustion from large remote responses before the parse-level check. */
 const MAX_FETCH_SIZE = 2_097_152;
 
-/** Default HTTP fetch timeout in milliseconds (30 seconds). */
+/** Default HTTP fetch timeout in milliseconds (30 seconds).
+ * NOTE: `AbortSignal.timeout()` / `AbortController` behaviour may differ
+ * between runtimes (e.g. older Cloudflare Workers may ignore abort signals).
+ * The manual `setTimeout` + `controller.abort()` approach used in
+ * `readFileContent` is the most portable pattern. */
 const FETCH_TIMEOUT_MS = 30_000;
 
 /** Maximum number of concurrent fetch requests for `readFrontMatterMany`. */
@@ -268,10 +272,21 @@ export function parseFrontMatterSync<T = Record<string, unknown>>(
   source: string,
   options?: ParseOptions,
 ): ParseResult<T> {
-  return parseFrontMatterCore<T>(source, options, {
+  const result = parseFrontMatterCore<T>(source, options, {
     getWasm: () => getWasmParsersSync(),
     validate: (data, schema) => lazyValidateSync<T>(data, schema),
-  }) as ParseResult<T>;
+  });
+
+  // Runtime guard: the sync path must never produce a Promise.
+  // If it does, a code change has violated the sync-callback invariant.
+  if (result instanceof Promise) {
+    throw new FrontMatterError(
+      "Internal error: parseFrontMatterSync produced a Promise. " +
+        "This indicates a bug — sync callbacks must not return Promises.",
+    );
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -566,6 +581,33 @@ async function readFileContent(path: string | URL): Promise<string> {
     (path instanceof URL && (path.protocol === "http:" || path.protocol === "https:")) ||
     (typeof path === "string" && /^https?:/.test(path))
   ) {
+    // SSRF protection: block private/internal network addresses and non-http(s) schemes.
+    const url = path instanceof URL ? path : new URL(path);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error(`Unsupported URL scheme: ${url.protocol}`);
+    }
+    const hostname = url.hostname.toLowerCase();
+    if (
+      hostname === "localhost" ||
+      hostname === "[::1]" ||
+      hostname.startsWith("127.") ||
+      hostname.startsWith("10.") ||
+      hostname.startsWith("192.168.") ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+      hostname.endsWith(".local") ||
+      hostname.startsWith("169.254.") ||
+      hostname === "0.0.0.0" ||
+      hostname.startsWith("[fc") ||
+      hostname.startsWith("[fd") ||
+      hostname.startsWith("[fe80")
+    ) {
+      throw new Error(`Blocked request to private/internal address: ${hostname}`);
+    }
+
+    // Limit redirections — `fetch()` follows redirects by default.
+    // Use `redirect: "manual"` is too restrictive; instead set a redirect
+    // limit via `follow` on runtimes that support it, or rely on the default
+    // (typically 20). This is a defence-in-depth note for integrators.
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     let res: Response;

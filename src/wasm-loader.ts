@@ -73,10 +73,16 @@ export async function getWasmParsers(): Promise<WasmParsers> {
     return initPromise;
   }
 
-  initPromise = loadWasm().catch((err) => {
-    initPromise = null; // allow retry on next call
-    throw new Error("Failed to load WASM module", { cause: err });
-  });
+  // Wrap the loading in a promise that concurrent callers can safely share.
+  // On failure, each caller receives its own rejected promise while the
+  // shared `initPromise` is cleared so that subsequent calls can retry.
+  initPromise = loadWasm().then(
+    (mod) => mod,
+    (err) => {
+      initPromise = null; // allow retry on next call
+      throw new Error("Failed to load WASM module", { cause: err });
+    },
+  );
 
   return initPromise;
 }
