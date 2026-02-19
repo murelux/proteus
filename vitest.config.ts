@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [wasm()],
   test: {
     include: ["tests/**/*.test.ts"],
-    exclude: ["tests/deno.test.ts"],
+    exclude: ["tests/deno.test.ts", "tests/worker-integration.test.ts"],
     benchmark: {
       include: ["tests/benchmarks/**/*.bench.ts"],
     },

@@ -17,6 +17,9 @@ export function extractExcerpt(
   content: string,
   options?: ExcerptOptions | boolean,
 ): string | undefined {
+  // Explicitly handle `false` — no excerpt requested.
+  if (options === false) return undefined;
+
   if (!content || content.trim().length === 0) {
     return undefined;
   }

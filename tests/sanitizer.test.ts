@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeKeys } from "../src/sanitizer.js";
 import type { SanitizeOptions } from "../src/sanitizer.js";
+import { sanitizeKeys } from "../src/sanitizer.js";
 
 describe("sanitizeKeys", () => {
   it("should strip __proto__ key", () => {
@@ -166,12 +166,7 @@ describe("sanitizeKeys", () => {
     inner.__proto__ = { bad: true };
 
     const input = {
-      items: [
-        { name: "a" },
-        [inner, { nested: [{ __proto__: "evil" }] }],
-        "plain string",
-        42,
-      ],
+      items: [{ name: "a" }, [inner, { nested: [{ __proto__: "evil" }] }], "plain string", 42],
     };
 
     const result = sanitizeKeys(input) as Record<string, unknown>;

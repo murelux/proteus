@@ -1,5 +1,5 @@
 [package]
-name = "proteus-wasm"
+name = "quill-matter-wasm"
 version = "0.1.1"
 edition = "2021"
 description = "WASM-compiled parsers for YAML, JSON, and TOML front matter"

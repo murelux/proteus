@@ -2,60 +2,31 @@
 import * as bgModule from "../pkg/quill_matter_wasm_bg.js";
 // @ts-expect-error: wrangler resolves .wasm imports as WebAssembly.Module
 import wasmBinary from "../pkg/quill_matter_wasm_bg.wasm";
-
-import { parseFrontMatter, sanitizeErrorMessage } from "../src/index.js";
+import { sanitizeErrorMessage } from "../src/error-utils.js";
+import { parseFrontMatter } from "../src/index.js";
 import { _preloadWasmModule } from "../src/wasm-loader.js";
+import type { KVLike, WorkerEnv } from "./utils.js";
+import {
+  corsHeaders,
+  isValidNamespace,
+  jsonError,
+  jsonSuccess,
+  MAX_BODY_SIZE,
+  readKVEntry,
+  resolveKV,
+  validateSlugAndKV,
+} from "./utils.js";
 
-interface Env {
-  KV_CONTENT: KVNamespace;
-  /** Comma-separated list of allowed origins (e.g. "https://example.com,https://app.example.com").
-   *  When unset, defaults to rejecting cross-origin requests (no CORS header). */
-  ALLOWED_ORIGINS?: string;
-}
-
-/** Maximum allowed request body size (1 MB). */
-const MAX_BODY_SIZE = 1_048_576;
+/**
+ * The Env interface uses WorkerEnv's dynamic `[key: string]` index signature.
+ * KV namespace bindings (e.g., KV_CONTENT, KV_PAGES) are managed via the
+ * Cloudflare Dashboard and appear at runtime as properties on `env`.
+ */
+type Env = WorkerEnv;
 
 /** Cached TextEncoder / TextDecoder instances for the worker. */
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
-
-/** Allowed slug characters: alphanumeric, hyphens, underscores, dots, slashes.
- * Blocks path traversal sequences (".." consecutive dots). */
-const SLUG_PATTERN = /^[a-zA-Z0-9](?:[a-zA-Z0-9\-_/]|\.(?!\.))*$/;
-
-/** Maximum slug length. */
-const MAX_SLUG_LENGTH = 256;
-
-/**
- * Build CORS headers based on the request origin and the configured allowlist.
- *
- * When `ALLOWED_ORIGINS` is set, only listed origins receive the
- * `Access-Control-Allow-Origin` header.  When unset, no CORS header is
- * emitted (effectively same-origin only).
- */
-function corsHeaders(origin: string | null, env: Env): Record<string, string> {
-  const headers: Record<string, string> = {
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  };
-
-  if (!env.ALLOWED_ORIGINS || !origin) return headers;
-
-  const allowed = env.ALLOWED_ORIGINS.split(",").map((o) => o.trim());
-  if (allowed.includes(origin)) {
-    headers["Access-Control-Allow-Origin"] = origin;
-    headers.Vary = "Origin";
-  }
-  return headers;
-}
-
-/** Security headers applied to all non-preflight responses. */
-const securityHeaders: Record<string, string> = {
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
-};
 
 /**
  * Eagerly initialise the WASM module using statically-imported artefacts
@@ -90,17 +61,14 @@ const ready = (async () => {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const origin = request.headers.get("origin");
-    const cors = corsHeaders(origin, env);
+    const cors = corsHeaders(origin, env.ALLOWED_ORIGINS);
 
     // Fail fast if WASM initialisation failed.
     try {
       await ready;
     } catch (err) {
       console.error("WASM init failed:", err instanceof Error ? err.message : String(err));
-      return Response.json(
-        { error: "Service unavailable: WASM initialization failed" },
-        { status: 503, headers: { ...cors, ...securityHeaders } },
-      );
+      return jsonError("Service unavailable: WASM initialization failed", 503, cors);
     }
 
     const url = new URL(request.url);
@@ -113,245 +81,173 @@ export default {
       });
     }
 
-    // 2. Existing Markdown parsing
+    // 2. POST — Markdown front matter parsing
     if (request.method === "POST") {
-      // Validate Content-Type: only accept text/* and application/json.
-      const contentType = request.headers.get("content-type") ?? "";
-      if (
-        contentType &&
-        !contentType.startsWith("text/") &&
-        !contentType.startsWith("application/json") &&
-        !contentType.startsWith("application/x-www-form-urlencoded")
-      ) {
-        return Response.json(
-          { error: `Unsupported Content-Type: ${contentType.split(";")[0]}` },
-          { status: 415, headers: { ...cors, ...securityHeaders } },
-        );
-      }
-
-      try {
-        // Fast-reject: use Content-Length as an early hint (untrusted).
-        const contentLength = request.headers.get("content-length");
-        if (contentLength && Number.parseInt(contentLength, 10) > MAX_BODY_SIZE) {
-          return Response.json(
-            { error: `Request body too large (max: ${MAX_BODY_SIZE} bytes)` },
-            { status: 413, headers: { ...cors, ...securityHeaders } },
-          );
-        }
-
-        // Stream-read the body with a size cap to avoid buffering oversized
-        // payloads entirely into memory before rejecting them.
-        let markdown: string;
-        if (request.body) {
-          const reader = request.body.getReader();
-          const chunks: Uint8Array[] = [];
-          let received = 0;
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            received += value.byteLength;
-            if (received > MAX_BODY_SIZE) {
-              reader.cancel();
-              return Response.json(
-                { error: `Request body too large (max: ${MAX_BODY_SIZE} bytes)` },
-                { status: 413, headers: { ...cors, ...securityHeaders } },
-              );
-            }
-            chunks.push(value);
-          }
-          const merged = new Uint8Array(received);
-          let offset = 0;
-          for (const chunk of chunks) {
-            merged.set(chunk, offset);
-            offset += chunk.byteLength;
-          }
-          markdown = textDecoder.decode(merged);
-        } else {
-          markdown = await request.text();
-          const byteLength = textEncoder.encode(markdown).byteLength;
-          if (byteLength > MAX_BODY_SIZE) {
-            return Response.json(
-              { error: `Request body too large (max: ${MAX_BODY_SIZE} bytes)` },
-              { status: 413, headers: { ...cors, ...securityHeaders } },
-            );
-          }
-        }
-        const result = await parseFrontMatter(markdown);
-        return Response.json(result, {
-          headers: { ...cors, ...securityHeaders },
-        });
-      } catch (err) {
-        // Reuse the shared sanitization logic from the core library.
-        const raw = err instanceof Error ? err.message : String(err);
-        const message = sanitizeErrorMessage(raw);
-        return Response.json(
-          { error: message },
-          { status: 400, headers: { ...cors, ...securityHeaders } },
-        );
-      }
+      return handlePost(request, cors);
     }
 
-    // 3. GET /by-slug/:slug — lookup article by front-matter slug
-    if (request.method === "GET" && url.pathname.startsWith("/by-slug/")) {
-      const slug = decodeURIComponent(url.pathname.slice("/by-slug/".length));
-
-      if (!slug || slug.length > MAX_SLUG_LENGTH || !SLUG_PATTERN.test(slug)) {
-        return Response.json(
-          { error: "Invalid slug format" },
-          { status: 400, headers: { ...cors, ...securityHeaders } },
-        );
-      }
-
-      if (!env.KV_CONTENT) {
-        console.error("KV_CONTENT binding is not configured");
-        return Response.json(
-          { error: "Service unavailable: storage not configured" },
-          { status: 503, headers: { ...cors, ...securityHeaders } },
-        );
-      }
-
-      try {
-        // Read the _index to find the KV key for this slug
-        const indexRaw = await env.KV_CONTENT.get("_index", "text");
-        if (!indexRaw) {
-          return Response.json(
-            { error: "Index not available" },
-            { status: 503, headers: { ...cors, ...securityHeaders } },
-          );
-        }
-
-        let index: unknown;
-        try {
-          index = JSON.parse(indexRaw);
-        } catch {
-          console.error("Failed to parse _index from KV");
-          return Response.json(
-            { error: "Internal server error" },
-            { status: 500, headers: { ...cors, ...securityHeaders } },
-          );
-        }
-
-        if (!Array.isArray(index)) {
-          console.error("_index is not an array");
-          return Response.json(
-            { error: "Internal server error" },
-            { status: 500, headers: { ...cors, ...securityHeaders } },
-          );
-        }
-
-        const entry = (index as { key: string; slug?: string }[]).find((e) =>
-          e && typeof e === "object" && e.slug === slug
-        );
-
-        if (!entry) {
-          return Response.json(
-            { error: "Not found" },
-            { status: 404, headers: { ...cors, ...securityHeaders } },
-          );
-        }
-
-        // Fetch the full article by its KV key
-        const raw = await env.KV_CONTENT.get(entry.key, "text");
-        if (!raw) {
-          return Response.json(
-            { error: "Not found" },
-            { status: 404, headers: { ...cors, ...securityHeaders } },
-          );
-        }
-
-        const data = JSON.parse(raw);
-        return Response.json(data, {
-          headers: { ...cors, ...securityHeaders, "Cache-Control": "s-maxage=300" },
-        });
-      } catch (err) {
-        console.error(
-          `Error resolving slug "${slug}":`,
-          err instanceof Error ? err.message : String(err),
-        );
-        return Response.json(
-          { error: "Internal server error" },
-          { status: 500, headers: { ...cors, ...securityHeaders } },
-        );
-      }
+    // Only GET beyond this point
+    if (request.method !== "GET") {
+      return jsonError("Method not allowed", 405, cors);
     }
 
-    // 4. GET / — missing slug
-    if (request.method === "GET" && url.pathname === "/") {
-      return Response.json(
-        { error: "Missing slug. Usage: GET /:slug" },
-        { status: 400, headers: { ...cors, ...securityHeaders } },
-      );
+    // Parse path: /:namespace/by-slug/:slug or /:namespace/:slug
+    let segments: string[];
+    try {
+      segments = url.pathname.slice(1).split("/").map(decodeURIComponent);
+    } catch {
+      return jsonError("Invalid URL encoding", 400, cors);
     }
 
-    // 5. GET /:slug — KV read
-    if (request.method === "GET") {
-      const slug = decodeURIComponent(url.pathname.slice(1));
-
-      if (slug === "") {
-        return Response.json(
-          { error: "Missing slug. Usage: GET /:slug" },
-          { status: 400, headers: { ...cors, ...securityHeaders } },
-        );
-      }
-
-      // Validate slug format to prevent key enumeration.
-      if (slug.length > MAX_SLUG_LENGTH || !SLUG_PATTERN.test(slug)) {
-        return Response.json(
-          { error: "Invalid slug format" },
-          { status: 400, headers: { ...cors, ...securityHeaders } },
-        );
-      }
-
-      // Guard: KV namespace may not be bound (e.g. local dev, missing wrangler config).
-      if (!env.KV_CONTENT) {
-        console.error("KV_CONTENT binding is not configured");
-        return Response.json(
-          { error: "Service unavailable: storage not configured" },
-          { status: 503, headers: { ...cors, ...securityHeaders } },
-        );
-      }
-
-      try {
-        const raw = await env.KV_CONTENT.get(slug, "text");
-
-        if (raw === null) {
-          return Response.json(
-            { error: "Not found" },
-            { status: 404, headers: { ...cors, ...securityHeaders } },
-          );
-        }
-
-        try {
-          const data = JSON.parse(raw);
-          return Response.json(data, {
-            headers: { ...cors, ...securityHeaders, "Cache-Control": "s-maxage=300" },
-          });
-        } catch (parseError) {
-          console.error(
-            `JSON parse error for slug "${slug}":`,
-            parseError instanceof Error ? parseError.message : String(parseError),
-          );
-          return Response.json(
-            { error: "Internal server error" },
-            { status: 500, headers: { ...cors, ...securityHeaders } },
-          );
-        }
-      } catch (err) {
-        console.error(
-          `KV read error for slug "${slug}":`,
-          err instanceof Error ? err.message : String(err),
-        );
-        return Response.json(
-          { error: "Internal server error" },
-          { status: 500, headers: { ...cors, ...securityHeaders } },
-        );
-      }
+    if (segments.length === 1 && segments[0] === "") {
+      return jsonError("Missing namespace and slug. Usage: GET /:namespace/:slug", 400, cors);
     }
 
-    // 6. Method not allowed
-    return Response.json(
-      { error: "Method not allowed" },
-      { status: 405, headers: { ...cors, ...securityHeaders } },
-    );
+    const namespace = segments[0];
+    if (!isValidNamespace(namespace)) {
+      return jsonError("Invalid namespace format", 400, cors);
+    }
+
+    const kv = resolveKV(env, namespace);
+    if (!kv) {
+      return jsonError(`Unknown namespace: ${namespace}`, 404, cors);
+    }
+
+    // 3. GET /:namespace/by-slug/:slug — lookup article by slug via index
+    if (segments.length >= 3 && segments[1] === "by-slug") {
+      const slug = segments.slice(2).join("/");
+      return handleBySlug(slug, kv, cors);
+    }
+
+    // 4. GET /:namespace/:slug — direct KV read
+    if (segments.length >= 2) {
+      const slug = segments.slice(1).join("/");
+      return handleGetSlug(slug, kv, cors);
+    }
+
+    // 5. Namespace without slug
+    return jsonError("Missing slug. Usage: GET /:namespace/:slug", 400, cors);
   },
 };
+
+// ---------------------------------------------------------------------------
+// Route handlers
+// ---------------------------------------------------------------------------
+
+async function handlePost(request: Request, cors: Record<string, string>): Promise<Response> {
+  // Validate Content-Type: only accept text/* and application/json.
+  const contentType = request.headers.get("content-type") ?? "";
+  if (
+    contentType &&
+    !contentType.startsWith("text/") &&
+    !contentType.startsWith("application/json") &&
+    !contentType.startsWith("application/x-www-form-urlencoded")
+  ) {
+    return jsonError(`Unsupported Content-Type: ${contentType.split(";")[0]}`, 415, cors);
+  }
+
+  try {
+    // Fast-reject: use Content-Length as an early hint (untrusted).
+    const contentLength = request.headers.get("content-length");
+    if (contentLength && Number.parseInt(contentLength, 10) > MAX_BODY_SIZE) {
+      return jsonError(`Request body too large (max: ${MAX_BODY_SIZE} bytes)`, 413, cors);
+    }
+
+    // Stream-read the body with a size cap to avoid buffering oversized
+    // payloads entirely into memory before rejecting them.
+    let markdown: string;
+    if (request.body) {
+      const reader = request.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        received += value.byteLength;
+        if (received > MAX_BODY_SIZE) {
+          reader.cancel();
+          return jsonError(`Request body too large (max: ${MAX_BODY_SIZE} bytes)`, 413, cors);
+        }
+        chunks.push(value);
+      }
+      const merged = new Uint8Array(received);
+      let offset = 0;
+      for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      markdown = textDecoder.decode(merged);
+    } else {
+      markdown = await request.text();
+      const byteLength = textEncoder.encode(markdown).byteLength;
+      if (byteLength > MAX_BODY_SIZE) {
+        return jsonError(`Request body too large (max: ${MAX_BODY_SIZE} bytes)`, 413, cors);
+      }
+    }
+    const result = await parseFrontMatter(markdown);
+    return jsonSuccess(result, cors);
+  } catch (err) {
+    // Reuse the shared sanitization logic from the core library.
+    const raw = err instanceof Error ? err.message : String(err);
+    const message = sanitizeErrorMessage(raw);
+    return jsonError(message, 400, cors);
+  }
+}
+
+async function handleBySlug(slug: string, kv: KVLike, cors: Record<string, string>): Promise<Response> {
+  const validationError = validateSlugAndKV(slug, kv, cors);
+  if (validationError) return validationError;
+
+  try {
+    // Read the _index to find the KV key for this slug
+    const indexRaw = await kv.get("_index", "text");
+    if (!indexRaw) {
+      return jsonError("Index not available", 503, cors);
+    }
+
+    let index: unknown;
+    try {
+      index = JSON.parse(indexRaw);
+    } catch {
+      console.error("Failed to parse _index from KV");
+      return jsonError("Internal server error", 500, cors);
+    }
+
+    if (!Array.isArray(index)) {
+      console.error("_index is not an array");
+      return jsonError("Internal server error", 500, cors);
+    }
+
+    const entry = (index as { key: string; slug?: string }[]).find(
+      (e) => e && typeof e === "object" && e.slug === slug,
+    );
+
+    if (!entry) {
+      return jsonError("Not found", 404, cors);
+    }
+
+    // Fetch the full article by its KV key
+    return readKVEntry(kv, entry.key, slug, cors);
+  } catch (err) {
+    console.error(
+      `Error resolving slug "${slug}":`,
+      err instanceof Error ? err.message : String(err),
+    );
+    return jsonError("Internal server error", 500, cors);
+  }
+}
+
+async function handleGetSlug(slug: string, kv: KVLike, cors: Record<string, string>): Promise<Response> {
+  const validationError = validateSlugAndKV(slug, kv, cors);
+  if (validationError) return validationError;
+
+  try {
+    return await readKVEntry(kv, slug, slug, cors);
+  } catch (err) {
+    console.error(
+      `KV read error for slug "${slug}":`,
+      err instanceof Error ? err.message : String(err),
+    );
+    return jsonError("Internal server error", 500, cors);
+  }
+}

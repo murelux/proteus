@@ -9,16 +9,15 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { sanitizeKeys, DepthExceededError } from "../src/sanitizer.js";
 import {
-  parseFrontMatter,
+  FrontMatterError,
+  initWasm,
   parseFrontMatterSync,
   readFrontMatterMany,
   sanitizeErrorMessage,
-  initWasm,
-  FrontMatterError,
 } from "../src/index.js";
-import { _resetWasmCache, _preloadWasmModule, getWasmParsers } from "../src/wasm-loader.js";
+import { DepthExceededError, sanitizeKeys } from "../src/sanitizer.js";
+import { _preloadWasmModule, _resetWasmCache, getWasmParsers } from "../src/wasm-loader.js";
 
 // ---------------------------------------------------------------------------
 // DepthExceededError — sanitizer MAX_DEPTH enforcement
@@ -98,10 +97,7 @@ const FIXTURE_DIR = "tests/fixtures/many-test";
 describe("readFrontMatterMany — error isolation", () => {
   beforeAll(async () => {
     await mkdir(FIXTURE_DIR, { recursive: true });
-    await writeFile(
-      join(FIXTURE_DIR, "good.md"),
-      "---\ntitle: Good\n---\nContent",
-    );
+    await writeFile(join(FIXTURE_DIR, "good.md"), "---\ntitle: Good\n---\nContent");
   });
 
   afterAll(async () => {

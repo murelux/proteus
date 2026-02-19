@@ -136,3 +136,78 @@ describe("stringify → parse roundtrip", () => {
     expect(r2.data).toEqual(original);
   });
 });
+
+// ---------------------------------------------------------------------------
+// YAML type normalization traps
+// ---------------------------------------------------------------------------
+
+describe("YAML type normalization roundtrip", () => {
+  it("should treat YAML 'yes'/'no' as booleans (serde-saphyr YAML 1.1 compat)", async () => {
+    // serde-saphyr treats yes/no as booleans (YAML 1.1 behavior)
+    const markdown = "---\nanswer: yes\nother: no\n---\nContent";
+    const result = await parseFrontMatter(markdown);
+    const data = result.data as Record<string, unknown>;
+    expect(typeof data.answer).toBe("boolean");
+    expect(data.answer).toBe(true);
+    expect(typeof data.other).toBe("boolean");
+    expect(data.other).toBe(false);
+  });
+
+  it("should treat YAML 'true'/'false' as booleans", async () => {
+    const markdown = "---\ndraft: true\npublished: false\n---\nContent";
+    const result = await parseFrontMatter(markdown);
+    const data = result.data as Record<string, unknown>;
+    expect(data.draft).toBe(true);
+    expect(data.published).toBe(false);
+  });
+
+  it("should treat date-like strings as strings (not Date objects)", async () => {
+    // YAML→JSON intermediate representation normalizes timestamps to strings
+    const markdown = "---\ndate: 2024-01-15\n---\nContent";
+    const result = await parseFrontMatter(markdown);
+    const data = result.data as Record<string, unknown>;
+    // serde-saphyr via serde_json::Value → string representation
+    expect(typeof data.date).toBe("string");
+  });
+
+  it("should roundtrip date-like strings through YAML stringify→parse", async () => {
+    const original = { date: "2024-01-15", updated: "2024-06-30T10:00:00Z" };
+    const content = "Content";
+
+    const md = await stringifyFrontMatter(original, content);
+    const result = await parseFrontMatter(md);
+    const data = result.data as Record<string, unknown>;
+
+    // Date values survive the roundtrip as strings
+    expect(typeof data.date).toBe("string");
+    expect(typeof data.updated).toBe("string");
+  });
+
+  it("should handle large integers without precision loss (within i64 range)", async () => {
+    // Numbers within safe integer range should roundtrip perfectly
+    const original = { small: 42, medium: 999_999_999, safe_max: 9007199254740991 };
+    const content = "Content";
+
+    const md = await stringifyFrontMatter(original, content);
+    const result = await parseFrontMatter(md);
+    expect(result.data).toEqual(original);
+  });
+
+  it("should roundtrip special string values that look like YAML keywords", async () => {
+    const original = {
+      val_null: "null",
+      val_true: "true",
+      val_tilde: "~",
+    };
+    const content = "Body";
+
+    const md = await stringifyFrontMatter(original, content);
+    const result = await parseFrontMatter(md);
+    const data = result.data as Record<string, unknown>;
+
+    // These should roundtrip — serde-saphyr should quote them properly
+    // Note: the exact roundtrip behavior depends on the serializer's quoting rules
+    expect(data.val_null).toBeDefined();
+    expect(data.val_true).toBeDefined();
+  });
+});

@@ -7,9 +7,20 @@ import type { DelimiterPair, FrontMatterFormat } from "../src/types.js";
 // Runtime detection & Polyfills
 // ---------------------------------------------------------------------------
 
-declare const Bun: { argv: string[]; file(path: string): { text(): Promise<string>; exists(): Promise<boolean> } } | undefined;
+declare const Bun:
+  | {
+      argv: string[];
+      file(path: string): { text(): Promise<string>; exists(): Promise<boolean> };
+      stdin: { text(): Promise<string> };
+    }
+  | undefined;
 declare const Deno:
-  | { args: string[]; readTextFile(path: string): Promise<string>; exit(code?: number): never }
+  | {
+      args: string[];
+      readTextFile(path: string): Promise<string>;
+      exit(code?: number): never;
+      stdin: { readable: ReadableStream<Uint8Array> };
+    }
   | undefined;
 
 function getArgs(): string[] {
@@ -144,7 +155,8 @@ const HELP = `
 proteus — Parse YAML, JSON, and TOML front matter from Markdown files
 
 Usage:
-  proteus <command> <file> [options]
+  proteus <command> [file] [options]
+  cat file.md | proteus <command> [options]
 
 Commands:
   parse      Parse front matter and output as JSON
@@ -177,7 +189,10 @@ function die(message: string, code = 1): never {
 }
 
 async function readInput(path?: string): Promise<string> {
-  if (!path) die("no file specified — run with --help for usage");
+  // If no path is given, try reading from stdin (piped input).
+  if (!path) {
+    return readStdin();
+  }
 
   try {
     if (typeof Bun !== "undefined") {
@@ -196,6 +211,51 @@ async function readInput(path?: string): Promise<string> {
     die(`could not read file: ${path}`);
   }
   throw new Error("Unsupported runtime");
+}
+
+/** Read all of stdin as a UTF-8 string. */
+async function readStdin(): Promise<string> {
+  // 1. Deno native stdin API (avoids Node compat dependency)
+  // NOTE: Must use `typeof Deno !== "undefined"` rather than `Deno?.` because
+  // optional chaining still throws ReferenceError for undeclared globals.
+  // biome-ignore lint/complexity/useOptionalChain: Deno is an undeclared global — optional chaining throws ReferenceError
+  if (typeof Deno !== "undefined" && Deno.stdin?.readable) {
+    try {
+      const reader = Deno.stdin.readable.getReader();
+      const chunks: Uint8Array[] = [];
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+      }
+      let totalLength = 0;
+      for (const c of chunks) totalLength += c.byteLength;
+      const merged = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const c of chunks) {
+        merged.set(c, offset);
+        offset += c.byteLength;
+      }
+      return new TextDecoder().decode(merged);
+    } catch {
+      die("no file specified and stdin is not readable — run with --help for usage");
+    }
+  }
+
+  // 2. Node-compatible process.stdin (works in Bun and Node)
+  // Bun.stdin.text() doesn't keep the event loop alive on Windows,
+  // so we use the Node API which handles piped stdin correctly everywhere.
+  try {
+    const chunks: Buffer[] = [];
+    const stdin = process.stdin;
+    return await new Promise<string>((resolve, reject) => {
+      stdin.on("data", (chunk: Buffer) => chunks.push(chunk));
+      stdin.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+      stdin.on("error", reject);
+    });
+  } catch {
+    die("no file specified and stdin is not readable — run with --help for usage");
+  }
 }
 
 function parseDelimiter(raw?: string): DelimiterPair[] | undefined {

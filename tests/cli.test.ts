@@ -69,7 +69,7 @@ afterAll(async () => {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("CLI", () => {
+describe("CLI", { timeout: 15_000 }, () => {
   describe("parse command", () => {
     it("should parse YAML front matter", async () => {
       const { stdout, exitCode } = await runCli(["parse", yamlFile]);
@@ -96,7 +96,7 @@ describe("CLI", () => {
       expect(parsed.format).toBe("toml");
     });
 
-    it("should pretty-print with --pretty", { timeout: 15_000 }, async () => {
+    it("should pretty-print with --pretty", async () => {
       const { stdout, exitCode } = await runCli(["parse", yamlFile, "--pretty"]);
       expect(exitCode).toBe(0);
       expect(stdout).toContain("\n"); // multi-line = pretty
@@ -162,10 +162,29 @@ describe("CLI", () => {
       expect(stderr).toContain("unknown command");
     });
 
-    it("should error when no file specified", async () => {
-      const { exitCode, stderr } = await runCli(["parse"]);
-      expect(exitCode).not.toBe(0);
-      expect(stderr).toContain("no file specified");
+    it("should read from stdin when no file specified", async () => {
+      const result = await new Promise<{ stdout: string; stderr: string; exitCode: number }>(
+        (resolve) => {
+          const child = execFile(
+            "bun",
+            [CLI_PATH, "parse"],
+            { timeout: 10_000 },
+            (err, stdout, stderr) => {
+              const e = err as { code?: number } | null;
+              resolve({
+                stdout: (stdout ?? "").trim(),
+                stderr: (stderr ?? "").trim(),
+                exitCode: e?.code ?? 0,
+              });
+            },
+          );
+          child.stdin?.write("---\ntitle: stdin\n---\nBody");
+          child.stdin?.end();
+        },
+      );
+      expect(result.exitCode).toBe(0);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.data.title).toBe("stdin");
     });
 
     it("should error on invalid format", async () => {

@@ -20,9 +20,16 @@
 
 import type { DetectionResult } from "./detector.js";
 import { detectFormatWithPreparsed } from "./detector.js";
+import { sanitizeErrorMessage } from "./error-utils.js";
 import { extractExcerpt } from "./excerpt.js";
-import { extractFrontMatter } from "./extractor.js";
+import {
+  extractFrontMatter,
+  findCloseDelimiter,
+  stripBom,
+  validateDelimiters,
+} from "./extractor.js";
 import { createParserAdapter } from "./parsers.js";
+import { readFileContent } from "./reader.js";
 import { sanitizeKeys } from "./sanitizer.js";
 import type {
   DelimiterPair,
@@ -77,17 +84,6 @@ function lazyValidateSync<T>(data: unknown, schema: AnySchema): T {
  * Both the TS layer and the Rust WASM layer enforce the same byte-level limit. */
 const MAX_INPUT_SIZE = 1_048_576;
 
-/** Maximum HTTP response size to read into memory (2 MB).
- * Prevents memory exhaustion from large remote responses before the parse-level check. */
-const MAX_FETCH_SIZE = 2_097_152;
-
-/** Default HTTP fetch timeout in milliseconds (30 seconds).
- * NOTE: `AbortSignal.timeout()` / `AbortController` behaviour may differ
- * between runtimes (e.g. older Cloudflare Workers may ignore abort signals).
- * The manual `setTimeout` + `controller.abort()` approach used in
- * `readFileContent` is the most portable pattern. */
-const FETCH_TIMEOUT_MS = 30_000;
-
 /** Maximum number of concurrent fetch requests for `readFrontMatterMany`. */
 const MAX_CONCURRENCY = 8;
 
@@ -129,39 +125,16 @@ export function hasFrontMatter(
 ): boolean {
   if (!source) return false;
 
-  // Validate delimiter pairs (consistent with extractFrontMatter).
-  for (const { open, close } of delimiters) {
-    if (!open || !close) {
-      throw new FrontMatterError(
-        "Invalid delimiter pair: both open and close must be non-empty strings.",
-      );
-    }
-  }
-
-  // Strip BOM for consistency with extractFrontMatter.
-  const s = source.charCodeAt(0) === 0xfeff ? source.slice(1) : source;
+  // Reuse shared validation and BOM-stripping from the extractor module
+  // to ensure consistent behaviour and eliminate duplicated logic.
+  validateDelimiters(delimiters);
+  const s = stripBom(source);
 
   for (const { open, close } of delimiters) {
     if (s.startsWith(`${open}\n`) || s.startsWith(`${open}\r\n`)) {
-      // Look for the closing delimiter on its own line, followed by \n, \r\n or EOF.
       const openEnd = s[open.length] === "\r" ? open.length + 2 : open.length + 1;
-      let pos = openEnd - 1;
-      for (;;) {
-        let idx = s.indexOf(`\n${close}`, pos);
-        if (idx === -1) {
-          idx = s.indexOf(`\r\n${close}`, pos);
-          if (idx !== -1) idx += 1;
-        }
-        if (idx === -1) break;
-        const afterClose = idx + 1 + close.length;
-        if (
-          afterClose >= s.length ||
-          s[afterClose] === "\n" ||
-          (s[afterClose] === "\r" && s[afterClose + 1] === "\n")
-        ) {
-          return true;
-        }
-        pos = idx + 1;
+      if (findCloseDelimiter(s, close, openEnd) !== -1) {
+        return true;
       }
     }
   }
@@ -436,35 +409,26 @@ function handleError(
   const rawMessage = err instanceof Error ? err.message : String(err);
   const sanitizedMessage = sanitizeErrorMessage(rawMessage);
 
+  // Preserve the original error as `cause` so consumers can inspect it
+  // (e.g. access `ParseError.line` / `ValidationError.issues`) while still
+  // getting a sanitized top-level message.
+  const wrappedError = new FrontMatterError(sanitizedMessage);
+  wrappedError.cause = err;
+
   return {
     data: {} as Record<string, never>,
     content: extraction.content,
     format,
     isEmpty: false,
-    error: new FrontMatterError(sanitizedMessage),
+    error: wrappedError,
     excerpt,
     rawData: extraction.rawData,
   };
 }
 
 /** Strip file paths, stack traces, and internal details from error messages.
- * @internal Exported for reuse in the Worker entry-point. */
-export function sanitizeErrorMessage(message: string): string {
-  // Strip absolute file paths — Windows (C:\...) and Unix (/...).
-  // Supports spaces, unicode chars, and common special characters in paths.
-  let sanitized = message.replace(/(?:[A-Za-z]:)?[/\\](?:[^\s:*?"<>|\n]| (?=[^\s]))+/g, "<path>");
-  // Strip relative paths like ../foo/bar or ./foo
-  sanitized = sanitized.replace(/\.{1,2}[/\\](?:[^\s:*?"<>|\n]| (?=[^\s]))+/g, "<path>");
-  // Strip stack trace lines
-  sanitized = sanitized.replace(/\n\s+at\s+.+/g, "");
-  // Strip Rust panic details ("panicked at ...", "thread '...'")
-  sanitized = sanitized.replace(/thread\s+'[^']*'\s+panicked\s+at\s+[^\n]*/g, "<internal error>");
-  // Truncate to prevent excessive error detail exposure
-  if (sanitized.length > 300) {
-    sanitized = `${sanitized.slice(0, 300)}…`;
-  }
-  return sanitized.trim();
-}
+ * @internal Re-exported from error-utils for backward compatibility. */
+export { sanitizeErrorMessage } from "./error-utils.js";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -498,14 +462,11 @@ export { initWasm } from "./wasm-loader.js";
 
 // Note: `validate` is NOT re-exported here to avoid pulling in the valibot
 // dependency at import time.  Use the subpath import instead:
-// ---------------------------------------------------------------------------
-// Runtime detection & File API
-// ---------------------------------------------------------------------------
+//   import { validate } from "@quill/proteus/validator"
 
-declare const Bun:
-  | { file(path: string | URL): { text(): Promise<string>; exists(): Promise<boolean> } }
-  | undefined;
-declare const Deno: { readTextFile(path: string | URL): Promise<string> } | undefined;
+// ---------------------------------------------------------------------------
+// File API
+// ---------------------------------------------------------------------------
 
 /**
  * Read and parse front matter from a file path or URL.
@@ -547,14 +508,12 @@ export async function readFrontMatterMany<T = Record<string, unknown>>(
 ): Promise<ParseResult<T>[]> {
   const limit = Math.max(1, Math.min(concurrency, paths.length));
   const results: ParseResult<T>[] = new Array(paths.length);
-  // SAFETY: `nextIdx++` is safe without synchronisation because JavaScript
-  // is single-threaded. Each async worker yields only at `await` boundaries,
-  // and the post-increment is atomic within a single turn of the event loop.
-  let nextIdx = 0;
+  const queue = paths.map((_, i) => i);
 
   async function worker(): Promise<void> {
-    while (nextIdx < paths.length) {
-      const idx = nextIdx++;
+    while (queue.length > 0) {
+      const idx = queue.shift();
+      if (idx === undefined) break;
       try {
         results[idx] = await readFrontMatter<T>(paths[idx], options);
       } catch (err) {
@@ -573,144 +532,4 @@ export async function readFrontMatterMany<T = Record<string, unknown>>(
 
   await Promise.all(Array.from({ length: limit }, () => worker()));
   return results;
-}
-
-async function readFileContent(path: string | URL): Promise<string> {
-  // 1. Fetch (HTTP/HTTPS) - prioritize for all runtimes
-  if (
-    (path instanceof URL && (path.protocol === "http:" || path.protocol === "https:")) ||
-    (typeof path === "string" && /^https?:/.test(path))
-  ) {
-    // SSRF protection: block private/internal network addresses and non-http(s) schemes.
-    const url = path instanceof URL ? path : new URL(path);
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      throw new Error(`Unsupported URL scheme: ${url.protocol}`);
-    }
-    const hostname = url.hostname.toLowerCase();
-    if (
-      hostname === "localhost" ||
-      hostname === "[::1]" ||
-      hostname.startsWith("127.") ||
-      hostname.startsWith("10.") ||
-      hostname.startsWith("192.168.") ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
-      hostname.endsWith(".local") ||
-      hostname.startsWith("169.254.") ||
-      hostname === "0.0.0.0" ||
-      hostname.startsWith("[fc") ||
-      hostname.startsWith("[fd") ||
-      hostname.startsWith("[fe80")
-    ) {
-      throw new Error(`Blocked request to private/internal address: ${hostname}`);
-    }
-
-    // Limit redirections — `fetch()` follows redirects by default.
-    // Use `redirect: "manual"` is too restrictive; instead set a redirect
-    // limit via `follow` on runtimes that support it, or rely on the default
-    // (typically 20). This is a defence-in-depth note for integrators.
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    let res: Response;
-    try {
-      res = await fetch(path, { signal: controller.signal });
-    } catch (err) {
-      clearTimeout(timeout);
-      if (err instanceof DOMException && err.name === "AbortError") {
-        throw new Error(`Fetch timed out after ${FETCH_TIMEOUT_MS}ms: ${String(path)}`);
-      }
-      throw err;
-    }
-    clearTimeout(timeout);
-
-    if (!res.ok) {
-      throw new Error(`Failed to fetch ${String(path)}: ${res.status} ${res.statusText}`);
-    }
-
-    // Guard against unexpectedly large responses before reading the full body.
-    const contentLength = res.headers.get("content-length");
-    if (contentLength && Number.parseInt(contentLength, 10) > MAX_FETCH_SIZE) {
-      throw new Error(
-        `Response too large (${contentLength} bytes, max ${MAX_FETCH_SIZE}): ${String(path)}`,
-      );
-    }
-
-    // Validate Content-Type is text-like.
-    // NOTE: `application/octet-stream` is intentionally excluded — binary data
-    // should not be silently decoded as UTF-8 text.
-    const ct = res.headers.get("content-type") ?? "";
-    if (ct && !/(text\/|application\/(json|toml|yaml|x-yaml|markdown)|charset=)/i.test(ct)) {
-      throw new Error(
-        `Unexpected Content-Type "${ct.split(";")[0]}" from ${String(path)} (expected text)`,
-      );
-    }
-
-    // Stream-read with a size cap to prevent memory exhaustion.
-    if (res.body) {
-      const reader = res.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let received = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        received += value.byteLength;
-        if (received > MAX_FETCH_SIZE) {
-          reader.cancel();
-          throw new Error(
-            `Response body exceeded ${MAX_FETCH_SIZE} bytes from ${String(path)}`,
-          );
-        }
-        chunks.push(value);
-      }
-      const merged = new Uint8Array(received);
-      let offset = 0;
-      for (const chunk of chunks) {
-        merged.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-      return new TextDecoder().decode(merged);
-    }
-
-    // Fallback for environments without ReadableStream body
-    return res.text();
-  }
-
-  // 2. Bun (Local Files & file: URLs)
-  if (typeof Bun !== "undefined") {
-    // Bun.file() handles absolute/relative paths and file:// URLs correctly
-    const file = Bun.file(path);
-    try {
-      return await file.text();
-    } catch {
-      throw new Error(`File not found: ${String(path)}`);
-    }
-  }
-
-  // 3. Deno (Local Files & file: URLs)
-  if (typeof Deno !== "undefined") {
-    return Deno.readTextFile(path);
-  }
-
-  // 4. Fallback: node:fs (covers Vitest workers where Bun global is unavailable)
-  try {
-    const { readFile } = await import("node:fs/promises");
-    // Convert URL to path string to avoid type conflicts between Deno and Node URL types
-    let filePath: string;
-    if (typeof path === "string") {
-      filePath = path;
-    } else {
-      // For file:// URLs, convert to file path; for other URLs, use href
-      if (path.protocol === "file:") {
-        const { fileURLToPath } = await import("node:url");
-        // Deno's URL type and Node's URL type have incompatible TypeScript definitions
-        // (searchParams property differs), but they're runtime-compatible.
-        // @ts-ignore - Suppress type error: Deno URL vs Node URL type mismatch
-        filePath = fileURLToPath(path);
-      } else {
-        filePath = path.href;
-      }
-    }
-    return await readFile(filePath, "utf-8");
-  } catch {
-    throw new Error(`File not found: ${String(path)}`);
-  }
 }

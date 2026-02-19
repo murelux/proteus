@@ -9,10 +9,12 @@ describe("stringifyFrontMatter", () => {
 
       const result = await stringifyFrontMatter(data, content);
 
-      expect(result).toContain("---");
+      expect(result).toMatch(/^---\n/);
+      expect(result).toMatch(/\n---\n/);
       expect(result).toContain("title:");
       expect(result).toContain("Hello");
       expect(result).toContain("# Content here");
+      expect(result.endsWith("\n")).toBe(true);
     });
 
     it("should stringify to JSON", async () => {
@@ -21,9 +23,18 @@ describe("stringifyFrontMatter", () => {
 
       const result = await stringifyFrontMatter(data, content, { format: "json" });
 
-      expect(result).toContain("---");
+      // Should wrap JSON in --- delimiters
+      expect(result).toMatch(/^---\n/);
+      expect(result).toMatch(/\n---\n/);
+      // JSON must have quoted keys
       expect(result).toContain('"title"');
       expect(result).toContain('"Hello"');
+      expect(result).toContain("42");
+      // Verify parseable JSON between delimiters
+      const jsonBlock = result.split("---")[1].trim();
+      const parsed = JSON.parse(jsonBlock);
+      expect(parsed.title).toBe("Hello");
+      expect(parsed.count).toBe(42);
     });
 
     it("should stringify to TOML with +++ delimiter", async () => {
@@ -32,9 +43,12 @@ describe("stringifyFrontMatter", () => {
 
       const result = await stringifyFrontMatter(data, content, { format: "toml" });
 
-      expect(result).toContain("+++");
+      // TOML uses +++ delimiters
+      expect(result).toMatch(/^\+\+\+\n/);
+      expect(result).toMatch(/\n\+\+\+\n/);
       expect(result).toContain('title = "Hello"');
       expect(result).toContain("count = 42");
+      expect(result).toContain("# Content");
     });
 
     it("should use custom delimiter", async () => {
@@ -45,7 +59,8 @@ describe("stringifyFrontMatter", () => {
         delimiter: { open: "~~~", close: "~~~" },
       });
 
-      expect(result).toContain("~~~");
+      expect(result).toMatch(/^~~~\n/);
+      expect(result).toMatch(/\n~~~\n/);
       expect(result.split("~~~").length).toBe(3);
     });
 
@@ -54,8 +69,9 @@ describe("stringifyFrontMatter", () => {
 
       const result = await stringifyFrontMatter(data, "");
 
-      expect(result).toContain("---");
+      expect(result).toMatch(/^---\n/);
       expect(result).toContain("title:");
+      expect(result.endsWith("\n")).toBe(true);
     });
 
     it("should return content only when data is empty object", async () => {
@@ -78,8 +94,11 @@ describe("stringifyFrontMatter", () => {
 
       const result = await stringifyFrontMatter(data, "# Content");
 
+      expect(result).toMatch(/^---\n/);
       expect(result).toContain("tags:");
       expect(result).toContain("author:");
+      expect(result).toContain("Alice");
+      expect(result).toContain("alice@example.com");
     });
   });
 
@@ -93,8 +112,10 @@ describe("stringifyFrontMatter", () => {
     it("should stringify synchronously after initWasm", () => {
       const result = stringifyFrontMatterSync({ title: "Hello" }, "# Content");
 
-      expect(result).toContain("---");
+      expect(result).toMatch(/^---\n/);
+      expect(result).toMatch(/\n---\n/);
       expect(result).toContain("title:");
+      expect(result).toContain("Hello");
       expect(result).toContain("# Content");
     });
 
@@ -103,8 +124,9 @@ describe("stringifyFrontMatter", () => {
         format: "json",
       });
 
-      expect(result).toContain("---");
+      expect(result).toMatch(/^---\n/);
       expect(result).toContain('"title"');
+      expect(result).toContain('"Hello"');
     });
 
     it("should stringify to TOML synchronously", () => {
@@ -112,8 +134,10 @@ describe("stringifyFrontMatter", () => {
         format: "toml",
       });
 
-      expect(result).toContain("+++");
+      expect(result).toMatch(/^\+\+\+\n/);
+      expect(result).toMatch(/\n\+\+\+\n/);
       expect(result).toContain('title = "Hello"');
+      expect(result).toContain("count = 42");
     });
   });
 
@@ -149,7 +173,7 @@ describe("stringifyFrontMatter", () => {
         big[`key_${i}`] = "x".repeat(60);
       }
       await expect(stringifyFrontMatter(big, "content")).rejects.toThrow(
-        /Serialized front matter too large/,
+        /too large|Output too large/,
       );
     });
   });

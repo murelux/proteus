@@ -1,32 +1,35 @@
 /**
  * Integration tests for the Cloudflare Worker entry-point.
  *
- * These tests exercise the Worker's `fetch` handler in isolation by
- * constructing a minimal `Env` mock and calling the exported handler
- * directly — no Miniflare or wrangler dev needed.
+ * These tests exercise the Worker's shared utilities (slug validation, CORS
+ * headers, security headers) imported from `worker/utils.ts` — the same
+ * module the real worker uses. Route-level tests use a simulated handler
+ * that mirrors the worker's `fetch` logic with real `parseFrontMatter`.
  *
- * NOTE: The WASM module must be loadable via the bundler path
- * (`import("../pkg/quill_matter_wasm.js")`), which Vitest + vite-plugin-wasm
- * handles automatically.
+ * NOTE: The Worker's `fetch` handler itself cannot be imported directly
+ * because it relies on `import wasmBinary from "...wasm"` (wrangler static
+ * import). The shared utilities ARE imported directly, eliminating the
+ * previous drift risk.
  */
 import { describe, expect, it } from "vitest";
-import { initWasm, parseFrontMatter } from "../src/index.js";
-
-// We cannot import the worker module directly because it relies on
-// `import wasmBinary from "...wasm"` which only works under wrangler/workerd.
-// Instead, we test the individual concerns: route logic, slug validation,
-// error sanitization, security headers, and body-size checks.
+import { parseFrontMatter, sanitizeErrorMessage } from "../src/index.js";
+import {
+  corsHeaders,
+  isValidNamespace,
+  isValidSlug,
+  MAX_BODY_SIZE,
+  MAX_NAMESPACE_LENGTH,
+  MAX_SLUG_LENGTH,
+  NAMESPACE_PATTERN,
+  resolveKV,
+  SLUG_PATTERN,
+  securityHeaders,
+} from "../worker/utils.js";
+import type { KVLike, WorkerEnv } from "../worker/utils.js";
 
 // ---------------------------------------------------------------------------
-// Slug validation (mirrors the worker's SLUG_PATTERN)
+// Slug validation (imported from worker/utils.ts)
 // ---------------------------------------------------------------------------
-
-const SLUG_PATTERN = /^[a-zA-Z0-9](?:[a-zA-Z0-9\-_/]|\.(?!\.))*$/;
-const MAX_SLUG_LENGTH = 256;
-
-function isValidSlug(slug: string): boolean {
-  return slug.length > 0 && slug.length <= MAX_SLUG_LENGTH && SLUG_PATTERN.test(slug);
-}
 
 describe("Worker — slug validation", () => {
   it("should accept simple alphanumeric slugs", () => {
@@ -67,12 +70,74 @@ describe("Worker — slug validation", () => {
     expect(isValidSlug("a".repeat(256))).toBe(true);
     expect(isValidSlug("a".repeat(257))).toBe(false);
   });
+
+  it("should validate constants match worker expectations", () => {
+    expect(MAX_SLUG_LENGTH).toBe(256);
+    expect(SLUG_PATTERN).toBeInstanceOf(RegExp);
+    expect(MAX_BODY_SIZE).toBe(1_048_576);
+    expect(MAX_NAMESPACE_LENGTH).toBe(64);
+    expect(NAMESPACE_PATTERN).toBeInstanceOf(RegExp);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Namespace validation (imported from worker/utils.ts)
+// ---------------------------------------------------------------------------
+
+describe("Worker — namespace validation", () => {
+  it("should accept valid namespace names", () => {
+    expect(isValidNamespace("content")).toBe(true);
+    expect(isValidNamespace("blog-posts")).toBe(true);
+    expect(isValidNamespace("a")).toBe(true);
+    expect(isValidNamespace("pages")).toBe(true);
+    expect(isValidNamespace("my-kv-store")).toBe(true);
+  });
+
+  it("should reject invalid namespace names", () => {
+    expect(isValidNamespace("")).toBe(false);
+    expect(isValidNamespace("UPPER")).toBe(false);
+    expect(isValidNamespace("-leading")).toBe(false);
+    expect(isValidNamespace("trailing-")).toBe(false);
+    expect(isValidNamespace("has space")).toBe(false);
+    expect(isValidNamespace("has.dot")).toBe(false);
+    expect(isValidNamespace("has/slash")).toBe(false);
+  });
+
+  it("should reject namespaces exceeding max length", () => {
+    expect(isValidNamespace("a".repeat(64))).toBe(true);
+    expect(isValidNamespace("a".repeat(65))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// KV namespace resolution (imported from worker/utils.ts)
+// ---------------------------------------------------------------------------
+
+describe("Worker — KV namespace resolution", () => {
+  it("should resolve a known namespace", () => {
+    const env: WorkerEnv = { KV_CONTENT: { get: async () => null } };
+    expect(resolveKV(env, "content")).toBe(env.KV_CONTENT);
+  });
+
+  it("should resolve a hyphenated namespace", () => {
+    const env: WorkerEnv = { KV_BLOG_POSTS: { get: async () => null } };
+    expect(resolveKV(env, "blog-posts")).toBe(env.KV_BLOG_POSTS);
+  });
+
+  it("should return null for a missing namespace", () => {
+    const env: WorkerEnv = {};
+    expect(resolveKV(env, "missing")).toBeNull();
+  });
+
+  it("should return null for a non-KV binding", () => {
+    const env: WorkerEnv = { KV_BROKEN: "not-an-object" };
+    expect(resolveKV(env, "broken")).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
 // Error sanitization (imported from the shared module)
 // ---------------------------------------------------------------------------
-import { sanitizeErrorMessage } from "../src/index.js";
 
 describe("Worker — error sanitization (shared)", () => {
   it("should strip absolute Unix paths", () => {
@@ -104,7 +169,8 @@ describe("Worker — error sanitization (shared)", () => {
   });
 
   it("should strip stack trace lines", () => {
-    const msg = "Error occurred\n    at Object.parse (/path/to/file.js:10:5)\n    at Module._compile";
+    const msg =
+      "Error occurred\n    at Object.parse (/path/to/file.js:10:5)\n    at Module._compile";
     const result = sanitizeErrorMessage(msg);
     expect(result).not.toContain("at Object.parse");
     expect(result).not.toContain("at Module._compile");
@@ -123,47 +189,31 @@ describe("Worker — error sanitization (shared)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Worker route logic (simulated fetch handler)
+// Worker route logic (simulated fetch handler using real worker utils)
 // ---------------------------------------------------------------------------
-
-/**
- * Simulated worker handler that mirrors the route logic in worker/index.ts
- * without requiring the actual WASM static imports.
- */
-
-const MAX_BODY_SIZE = 1_048_576;
-
-const securityHeaders: Record<string, string> = {
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
-};
-
-/** Mirrors the worker's origin-based CORS logic. */
-function makeCorsHeaders(
-  origin: string | null,
-  allowedOrigins?: string,
-): Record<string, string> {
-  const headers: Record<string, string> = {
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  };
-  if (!allowedOrigins || !origin) return headers;
-  const allowed = allowedOrigins.split(",").map((o) => o.trim());
-  if (allowed.includes(origin)) {
-    headers["Access-Control-Allow-Origin"] = origin;
-    headers.Vary = "Origin";
-  }
-  return headers;
-}
 
 /** Default allowed origins for simulated tests. */
 const TEST_ALLOWED_ORIGINS = "https://example.com,https://app.example.com";
 
+/** Mock KV store that always returns null (no data). */
+const mockKV: KVLike = { async get() { return null; } };
+
+/** Simulated environment with a "content" namespace. */
+const testEnv: WorkerEnv = {
+  KV_CONTENT: mockKV,
+  ALLOWED_ORIGINS: TEST_ALLOWED_ORIGINS,
+};
+
+/**
+ * Simulated worker handler that mirrors the route logic in worker/index.ts
+ * using the REAL exported utilities (corsHeaders, securityHeaders, isValidSlug,
+ * isValidNamespace, resolveKV) from worker/utils.ts, ensuring tests stay in
+ * sync with the implementation.
+ */
 async function simulatedFetch(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const origin = request.headers.get("origin");
-  const cors = makeCorsHeaders(origin, TEST_ALLOWED_ORIGINS);
+  const cors = corsHeaders(origin, testEnv.ALLOWED_ORIGINS as string | undefined);
 
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: { ...cors } });
@@ -202,31 +252,84 @@ async function simulatedFetch(request: Request): Promise<Response> {
     }
   }
 
-  if (request.method === "GET" && url.pathname === "/") {
+  // Only GET beyond this point
+  if (request.method !== "GET") {
     return Response.json(
-      { error: "Missing slug. Usage: GET /:slug" },
+      { error: "Method not allowed" },
+      { status: 405, headers: { ...cors, ...securityHeaders } },
+    );
+  }
+
+  // Parse path: /:namespace/by-slug/:slug or /:namespace/:slug
+  let segments: string[];
+  try {
+    segments = url.pathname.slice(1).split("/").map(decodeURIComponent);
+  } catch {
+    return Response.json(
+      { error: "Invalid URL encoding" },
       { status: 400, headers: { ...cors, ...securityHeaders } },
     );
   }
 
-  if (request.method === "GET") {
-    const slug = decodeURIComponent(url.pathname.slice(1));
-    if (slug === "" || slug.length > MAX_SLUG_LENGTH || !SLUG_PATTERN.test(slug)) {
+  if (segments.length === 1 && segments[0] === "") {
+    return Response.json(
+      { error: "Missing namespace and slug. Usage: GET /:namespace/:slug" },
+      { status: 400, headers: { ...cors, ...securityHeaders } },
+    );
+  }
+
+  const namespace = segments[0];
+  if (!isValidNamespace(namespace)) {
+    return Response.json(
+      { error: "Invalid namespace format" },
+      { status: 400, headers: { ...cors, ...securityHeaders } },
+    );
+  }
+
+  const kv = resolveKV(testEnv, namespace);
+  if (!kv) {
+    return Response.json(
+      { error: `Unknown namespace: ${namespace}` },
+      { status: 404, headers: { ...cors, ...securityHeaders } },
+    );
+  }
+
+  // GET /:namespace/by-slug/:slug
+  if (segments.length >= 3 && segments[1] === "by-slug") {
+    const slug = segments.slice(2).join("/");
+    if (!slug || !isValidSlug(slug)) {
       return Response.json(
         { error: "Invalid slug format" },
         { status: 400, headers: { ...cors, ...securityHeaders } },
       );
     }
-    // KV not available in this test context — return 404
+    // KV always returns null in test context — return 404
     return Response.json(
       { error: "Not found" },
       { status: 404, headers: { ...cors, ...securityHeaders } },
     );
   }
 
+  // GET /:namespace/:slug
+  if (segments.length >= 2) {
+    const slug = segments.slice(1).join("/");
+    if (!slug || !isValidSlug(slug)) {
+      return Response.json(
+        { error: "Invalid slug format" },
+        { status: 400, headers: { ...cors, ...securityHeaders } },
+      );
+    }
+    // KV always returns null in test context — return 404
+    return Response.json(
+      { error: "Not found" },
+      { status: 404, headers: { ...cors, ...securityHeaders } },
+    );
+  }
+
+  // Namespace without slug
   return Response.json(
-    { error: "Method not allowed" },
-    { status: 405, headers: { ...cors, ...securityHeaders } },
+    { error: "Missing slug. Usage: GET /:namespace/:slug" },
+    { status: 400, headers: { ...cors, ...securityHeaders } },
   );
 }
 
@@ -261,7 +364,7 @@ describe("Worker — route logic (simulated fetch handler)", () => {
     });
     const res = await simulatedFetch(req);
     expect(res.status).toBe(200);
-    const json = await res.json() as Record<string, unknown>;
+    const json = (await res.json()) as Record<string, unknown>;
     expect((json.data as Record<string, unknown>).title).toBe("Hello");
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(res.headers.get("X-Frame-Options")).toBe("DENY");
@@ -278,26 +381,65 @@ describe("Worker — route logic (simulated fetch handler)", () => {
     expect(res.status).toBe(413);
   });
 
-  it("should return 400 for GET / (missing slug)", async () => {
+  it("should return 400 for GET / (missing namespace and slug)", async () => {
     const req = new Request("https://example.com/", { method: "GET" });
     const res = await simulatedFetch(req);
     expect(res.status).toBe(400);
-    const json = await res.json() as Record<string, unknown>;
-    expect(json.error).toContain("Missing slug");
+    const json = (await res.json()) as Record<string, unknown>;
+    expect(json.error).toContain("Missing namespace");
   });
 
-  it("should return 400 for GET with invalid slug (path traversal)", async () => {
-    // URL constructor normalizes path/../traversal, so we use %2e%2e directly
-    const req = new Request("https://example.com/path%2F..%2Ftraversal", { method: "GET" });
+  it("should return 400 for GET with invalid namespace format", async () => {
+    const req = new Request("https://example.com/INVALID/my-slug", { method: "GET" });
     const res = await simulatedFetch(req);
     expect(res.status).toBe(400);
   });
 
-  it("should return 404 for GET with valid slug (no KV)", async () => {
-    const req = new Request("https://example.com/valid-slug", { method: "GET" });
+  it("should return 404 for GET with unknown namespace", async () => {
+    const req = new Request("https://example.com/unknown/my-slug", { method: "GET" });
+    const res = await simulatedFetch(req);
+    expect(res.status).toBe(404);
+    const json = (await res.json()) as Record<string, unknown>;
+    expect(json.error).toContain("Unknown namespace");
+  });
+
+  it("should return 400 for GET with invalid slug (path traversal)", async () => {
+    const req = new Request("https://example.com/content/path%2F..%2Ftraversal", { method: "GET" });
+    const res = await simulatedFetch(req);
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 404 for GET with valid namespace and slug (no KV data)", async () => {
+    const req = new Request("https://example.com/content/valid-slug", { method: "GET" });
     const res = await simulatedFetch(req);
     expect(res.status).toBe(404);
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+  });
+
+  it("should return 404 for GET by-slug with valid namespace (no KV data)", async () => {
+    const req = new Request("https://example.com/content/by-slug/my-article", { method: "GET" });
+    const res = await simulatedFetch(req);
+    expect(res.status).toBe(404);
+  });
+
+  it("should return 400 for GET with malformed percent-encoding", async () => {
+    const req = new Request("https://example.com/content/%ZZ", { method: "GET" });
+    const res = await simulatedFetch(req);
+    expect(res.status).toBe(400);
+    const json = (await res.json()) as Record<string, unknown>;
+    expect(json.error).toContain("Invalid URL encoding");
+  });
+
+  it("should return 400 for GET with namespace starting with digit", async () => {
+    const req = new Request("https://example.com/1abc/my-slug", { method: "GET" });
+    const res = await simulatedFetch(req);
+    expect(res.status).toBe(400);
+  });
+
+  it("should return 400 for GET with trailing slash (empty slug)", async () => {
+    const req = new Request("https://example.com/content/", { method: "GET" });
+    const res = await simulatedFetch(req);
+    expect(res.status).toBe(400);
   });
 
   it("should return 405 for unsupported methods", async () => {
@@ -307,8 +449,6 @@ describe("Worker — route logic (simulated fetch handler)", () => {
   });
 
   it("should return 400 for POST with malformed front matter (parse error)", async () => {
-    // `{invalid json` is detected as YAML (not JSON), but YAML parsing of
-    // an unclosed flow mapping throws → the handler catches and returns 400.
     const body = "---\n{invalid json\n---\n# Content";
     const req = new Request("https://example.com/", {
       method: "POST",
@@ -324,28 +464,20 @@ describe("Worker — route logic (simulated fetch handler)", () => {
       headers: { Origin: "https://example.com" },
     });
     const res = await simulatedFetch(req);
+    expect(res.status).toBe(400);
     expect(res.headers.get("Access-Control-Allow-Origin")).toBe("https://example.com");
   });
 });
 
 // ---------------------------------------------------------------------------
-// Security headers validation
+// Security headers validation (imported from worker/utils.ts)
 // ---------------------------------------------------------------------------
 
 describe("Worker — security headers contract", () => {
-  const expectedHeaders = {
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "Referrer-Policy": "strict-origin-when-cross-origin",
-  };
-
-  it("should define all required security headers", () => {
-    // This test validates that our security headers constant matches expectations.
-    // The actual worker uses these headers on every response.
-    for (const [key, value] of Object.entries(expectedHeaders)) {
-      expect(key).toBeTruthy();
-      expect(value).toBeTruthy();
-    }
+  it("should define all required security headers with correct values", () => {
+    expect(securityHeaders["X-Content-Type-Options"]).toBe("nosniff");
+    expect(securityHeaders["X-Frame-Options"]).toBe("DENY");
+    expect(securityHeaders["Referrer-Policy"]).toBe("strict-origin-when-cross-origin");
   });
 });
 
@@ -369,12 +501,12 @@ describe("Worker — body size limits", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CORS headers validation
+// CORS headers validation (imported from worker/utils.ts)
 // ---------------------------------------------------------------------------
 
 describe("Worker — CORS headers contract", () => {
   it("should return ACAO for allowed origins", () => {
-    const cors = makeCorsHeaders("https://example.com", "https://example.com,https://other.com");
+    const cors = corsHeaders("https://example.com", "https://example.com,https://other.com");
     expect(cors["Access-Control-Allow-Origin"]).toBe("https://example.com");
     expect(cors.Vary).toBe("Origin");
     expect(cors["Access-Control-Allow-Methods"]).toContain("POST");
@@ -383,17 +515,17 @@ describe("Worker — CORS headers contract", () => {
   });
 
   it("should not return ACAO for disallowed origins", () => {
-    const cors = makeCorsHeaders("https://evil.com", "https://example.com");
+    const cors = corsHeaders("https://evil.com", "https://example.com");
     expect(cors["Access-Control-Allow-Origin"]).toBeUndefined();
   });
 
   it("should not return ACAO when no allowlist is configured", () => {
-    const cors = makeCorsHeaders("https://example.com", undefined);
+    const cors = corsHeaders("https://example.com", undefined);
     expect(cors["Access-Control-Allow-Origin"]).toBeUndefined();
   });
 
   it("should not return ACAO when no origin header is present", () => {
-    const cors = makeCorsHeaders(null, "https://example.com");
+    const cors = corsHeaders(null, "https://example.com");
     expect(cors["Access-Control-Allow-Origin"]).toBeUndefined();
   });
 });
@@ -403,7 +535,6 @@ describe("Worker — CORS headers contract", () => {
 // ---------------------------------------------------------------------------
 
 describe("Worker — parseFrontMatter pipeline", () => {
-
   it("should parse YAML front matter from POST body", async () => {
     const markdown = "---\ntitle: Hello\ntags:\n  - ts\n---\n# Body";
     const result = await parseFrontMatter(markdown);

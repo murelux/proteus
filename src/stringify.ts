@@ -21,9 +21,7 @@ const FORMAT_DELIMITERS: Record<FrontMatterFormat, DelimiterPair> = {
 function validateData(data: Record<string, unknown>): boolean {
   if (data === null || typeof data !== "object" || Array.isArray(data)) {
     const actual = data === null ? "null" : Array.isArray(data) ? "array" : typeof data;
-    throw new FrontMatterError(
-      `Expected a plain object for front matter data, got ${actual}`,
-    );
+    throw new FrontMatterError(`Expected a plain object for front matter data, got ${actual}`);
   }
   return Object.keys(data).length === 0;
 }

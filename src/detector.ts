@@ -52,14 +52,25 @@ export function detectFormatWithPreparsed(
     return { format: "toml" };
   }
 
-  // JSON detection: content starts with `{` or `[` and is valid JSON.
+  // JSON detection: content starts with `{` and is valid JSON.
   // A simple `startsWith("{")` heuristic would misidentify YAML flow
   // mappings (e.g. `{key: value}`) as JSON, so we probe with JSON.parse.
+  //
+  // NOTE: JSON arrays (`[...]`) are intentionally excluded — front matter
+  // must be a key-value object, not an array. Accepting arrays would produce
+  // a non-object `data` that violates the `Record<string, unknown>` contract.
   const trimmed = rawData.trimStart();
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+  if (trimmed.startsWith("{")) {
     try {
       const preparsedData = JSON.parse(trimmed);
-      return { format: "json", preparsedData };
+      // Only accept plain objects, not arrays or primitives.
+      if (
+        preparsedData !== null &&
+        typeof preparsedData === "object" &&
+        !Array.isArray(preparsedData)
+      ) {
+        return { format: "json", preparsedData };
+      }
     } catch {
       // Not valid JSON — fall through to YAML default.
     }

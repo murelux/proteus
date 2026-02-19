@@ -165,7 +165,29 @@ async function readWasmFile(url: URL): Promise<ArrayBuffer> {
   return response.arrayBuffer();
 }
 
+/** Maximum time to wait for WASM module loading (30 seconds).
+ * Prevents indefinite hangs from corrupted binaries or stalled network loads. */
+const WASM_LOAD_TIMEOUT_MS = 30_000;
+
 async function loadWasm(): Promise<WasmParsers> {
+  // Wrap the entire load in a timeout to prevent indefinite hangs.
+  // Clear the timer once loading completes to avoid timer leaks.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`WASM module loading timed out after ${WASM_LOAD_TIMEOUT_MS}ms`)),
+      WASM_LOAD_TIMEOUT_MS,
+    );
+  });
+
+  try {
+    return await Promise.race([loadWasmInner(), timeoutPromise]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function loadWasmInner(): Promise<WasmParsers> {
   try {
     // Bundler-friendly import (works in Vitest, Vite, Cloudflare Workers, etc.)
     const mod = await import("../pkg/quill_matter_wasm.js");
@@ -181,10 +203,9 @@ async function loadWasm(): Promise<WasmParsers> {
         "Ensure the WASM binary exists at pkg/quill_matter_wasm_bg.wasm " +
         "and was built with `bun run build:wasm`. " +
         "If running under a bundler, check that vite-plugin-wasm (or equivalent) is configured.";
-      throw new Error(
-        `Failed to load WASM module via both bundler and direct paths. ${hint}`,
-        { cause: directErr },
-      );
+      throw new Error(`Failed to load WASM module via both bundler and direct paths. ${hint}`, {
+        cause: directErr,
+      });
     }
   }
 }

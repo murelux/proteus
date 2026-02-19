@@ -1,0 +1,18 @@
+{
+  "name": "quill-matter-wasm",
+  "type": "module",
+  "description": "WASM-compiled parsers for YAML, JSON, and TOML front matter",
+  "version": "0.1.1",
+  "files": [
+    "quill_matter_wasm_bg.wasm",
+    "quill_matter_wasm.js",
+    "quill_matter_wasm_bg.js",
+    "quill_matter_wasm.d.ts"
+  ],
+  "main": "quill_matter_wasm.js",
+  "types": "quill_matter_wasm.d.ts",
+  "sideEffects": [
+    "./quill_matter_wasm.js",
+    "./snippets/*"
+  ]
+}

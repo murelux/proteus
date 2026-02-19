@@ -42,16 +42,10 @@ export function extractFrontMatter(
 
   // Strip UTF-8 BOM — editors like Windows Notepad prepend \uFEFF which
   // would prevent the opening delimiter from matching.
-  const input = source.charCodeAt(0) === 0xfeff ? source.slice(1) : source;
+  const input = stripBom(source);
 
   // Validate delimiter pairs.
-  for (const { open, close } of delimiters) {
-    if (!open || !close) {
-      throw new ExtractionError(
-        "Invalid delimiter pair: both open and close must be non-empty strings.",
-      );
-    }
-  }
+  validateDelimiters(delimiters);
 
   // Try each delimiter pair in order.
   // Only normalise line endings in the region we need (not the full source).
@@ -86,6 +80,65 @@ export function extractFrontMatter(
 
   // No front matter found.
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers (exported for reuse by hasFrontMatter)
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate delimiter pairs — throws ExtractionError if any pair has empty open/close.
+ * @internal Shared between extractFrontMatter and hasFrontMatter.
+ */
+export function validateDelimiters(delimiters: readonly DelimiterPair[]): void {
+  for (const { open, close } of delimiters) {
+    if (!open || !close) {
+      throw new ExtractionError(
+        "Invalid delimiter pair: both open and close must be non-empty strings.",
+      );
+    }
+  }
+}
+
+/**
+ * Strip a leading UTF-8 BOM (\uFEFF) if present.
+ * @internal Shared between extractFrontMatter and hasFrontMatter.
+ */
+export function stripBom(source: string): string {
+  return source.charCodeAt(0) === 0xfeff ? source.slice(1) : source;
+}
+
+/**
+ * Find the closing delimiter starting at `searchFrom`, requiring that the
+ * delimiter occupies its own line (preceded by `\n` and followed by `\n`,
+ * `\r\n`, or EOF).
+ *
+ * @internal Exported for reuse by hasFrontMatter.
+ */
+export function findCloseDelimiter(source: string, close: string, searchFrom: number): number {
+  let pos = searchFrom - 1;
+  for (;;) {
+    let idx = source.indexOf(`\n${close}`, pos);
+    if (idx === -1) {
+      // Also try \r\n before close.
+      idx = source.indexOf(`\r\n${close}`, pos);
+      if (idx !== -1) idx += 1; // advance past \r so idx points to \n
+    }
+    if (idx === -1) return -1;
+
+    // Check that the char immediately after the close delimiter is \n, \r\n or EOF.
+    const afterClose = idx + 1 + close.length;
+    if (
+      afterClose >= source.length || // EOF
+      source[afterClose] === "\n" || // \n
+      (source[afterClose] === "\r" && source[afterClose + 1] === "\n") // \r\n
+    ) {
+      return idx;
+    }
+
+    // Not a valid close — advance and keep searching.
+    pos = idx + 1;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -132,33 +185,4 @@ function tryExtract(source: string, pair: DelimiterPair): ExtractionResult | und
   return { rawData, content, delimiter: pair };
 }
 
-/**
- * Find the closing delimiter starting at `searchFrom`, requiring that the
- * delimiter occupies its own line (preceded by `\n` and followed by `\n`,
- * `\r\n`, or EOF).
- */
-function findCloseDelimiter(source: string, close: string, searchFrom: number): number {
-  let pos = searchFrom - 1;
-  for (;;) {
-    let idx = source.indexOf(`\n${close}`, pos);
-    if (idx === -1) {
-      // Also try \r\n before close.
-      idx = source.indexOf(`\r\n${close}`, pos);
-      if (idx !== -1) idx += 1; // advance past \r so idx points to \n
-    }
-    if (idx === -1) return -1;
-
-    // Check that the char immediately after the close delimiter is \n, \r\n or EOF.
-    const afterClose = idx + 1 + close.length;
-    if (
-      afterClose >= source.length || // EOF
-      source[afterClose] === "\n" || // \n
-      (source[afterClose] === "\r" && source[afterClose + 1] === "\n") // \r\n
-    ) {
-      return idx;
-    }
-
-    // Not a valid close — advance and keep searching.
-    pos = idx + 1;
-  }
-}
+// findCloseDelimiter is now exported above for shared use.

@@ -24,7 +24,7 @@ fn check_input_size(input: &str) -> Result<(), JsError> {
 const MAX_OUTPUT_SIZE: usize = 1_048_576;
 
 /// Reject serialized output that exceeds `MAX_OUTPUT_SIZE`.
-fn check_output_size(output: &str) -> Result<String, JsError> {
+fn check_output_size(output: String) -> Result<String, JsError> {
     if output.len() > MAX_OUTPUT_SIZE {
         return Err(JsError::new(&format!(
             "Output too large: {} bytes (max: {} bytes)",
@@ -32,7 +32,7 @@ fn check_output_size(output: &str) -> Result<String, JsError> {
             MAX_OUTPUT_SIZE
         )));
     }
-    Ok(output.to_string())
+    Ok(output)
 }
 
 /// Serialize any `Serialize` value into a `JsValue` using object-style maps.
@@ -110,7 +110,7 @@ pub fn stringify_yaml(value: JsValue) -> Result<String, JsError> {
         .map_err(|e| JsError::new(&format!("Failed to convert JS value: {e}")))?;
     let result = serde_saphyr::to_string(&v)
         .map_err(|e| JsError::new(&format!("YAML stringify error: {e}")))?;
-    check_output_size(&result)
+    check_output_size(result)
 }
 
 /// Stringify a JavaScript value to JSON (pretty-printed).
@@ -123,7 +123,7 @@ pub fn stringify_json(value: JsValue) -> Result<String, JsError> {
         .map_err(|e| JsError::new(&format!("Failed to convert JS value: {e}")))?;
     let result = serde_json::to_string_pretty(&v)
         .map_err(|e| JsError::new(&format!("JSON stringify error: {e}")))?;
-    check_output_size(&result)
+    check_output_size(result)
 }
 
 /// Stringify a JavaScript value to TOML.
@@ -136,7 +136,7 @@ pub fn stringify_toml(value: JsValue) -> Result<String, JsError> {
         .map_err(|e| JsError::new(&format!("Failed to convert JS value: {e}")))?;
     let result = toml::to_string_pretty(&v)
         .map_err(|e| JsError::new(&format!("TOML stringify error: {e}")))?;
-    check_output_size(&result)
+    check_output_size(result)
 }
 
 #[cfg(test)]
@@ -286,13 +286,13 @@ mod tests {
     #[test]
     fn test_check_output_size_within_limit() {
         let output = "b".repeat(MAX_OUTPUT_SIZE);
-        assert!(check_output_size(&output).is_ok());
+        assert!(check_output_size(output).is_ok());
     }
 
     #[test]
     fn test_check_output_size_exceeds_limit() {
         let output = "b".repeat(MAX_OUTPUT_SIZE + 1);
-        let result = check_output_size(&output);
+        let result = check_output_size(output);
         assert!(result.is_err());
     }
 

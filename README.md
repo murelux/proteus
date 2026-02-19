@@ -264,11 +264,7 @@ proteus validate post.md
 
 ## Cloudflare Workers
 
-See the deployment guide in your language:
-
-- [English](doc/English/cloudflare/workers-deployment-guide.md)
-- [中文](doc/中文/cloudflare/workers-部署指南.md)
-- [日本語](doc/日本語/cloudflare/workers-デプロイガイド.md)
+See [doc/cloudflare-workers.md](doc/cloudflare-workers.md) for the full deployment guide — KV namespace setup, API routes, CORS, environment variables, and security features.
 
 ## Known Limitations
 
@@ -276,6 +272,7 @@ See the deployment guide in your language:
 - **Sync API requires pre-initialization** — `parseFrontMatterSync()` requires `await initWasm()` beforehand; truly zero-config sync is not possible
 - **Valibot only** — Schema validation only supports Valibot (via the [Standard Schema](https://github.com/standard-schema/standard-schema) protocol); Zod etc. are not supported
 - **YAML 1.2 only** — The Rust layer uses `serde-saphyr`, incompatible with YAML 1.1 features (e.g. octal `0777`, boolean `yes/no`)
+- **YAML→JSON type normalization** — The WASM parser converts YAML through a `serde_json::Value` intermediate representation. This means: YAML timestamps (e.g. `2024-01-15`) become strings, `yes`/`no`/`on`/`off` are treated as booleans (YAML 1.1 compat), and integers beyond JavaScript's `Number.MAX_SAFE_INTEGER` (2^53 − 1) may lose precision. Use quoted strings in YAML for values that must survive roundtrips exactly.
 - **No streaming** — Input is fully loaded into memory before parsing; files >1 MB are rejected
 
 ## Development
@@ -283,12 +280,12 @@ See the deployment guide in your language:
 ```bash
 bun install
 bun run build:wasm    # Requires Rust + wasm-pack
-bun run test
-bun run test:deno
-bun run bench         # Performance benchmarks
+bun run test          # Bun (Vitest)
+bun run test:deno     # Deno
+bun run test:worker   # Cloudflare Workers (Miniflare)
 ```
 
-**WASM build details:** `wasm-pack build` outputs to `pkg/` with `--target bundler`. Cargo is configured with `opt-level = "s"` + LTO for minimal binary size. Rust crate dependencies: `serde-saphyr` (YAML), `serde_json` (JSON), `toml` (TOML), `wasm-bindgen` + `serde-wasm-bindgen` (JS bridge).
+For the complete guide — WASM build, linting, type checking, project structure, and per-runtime test details — see [doc/development.md](doc/development.md).
 
 ## License
 

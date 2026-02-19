@@ -10,7 +10,8 @@
     "./detector": "./src/detector.ts",
     "./validator": "./src/validator.ts",
     "./sanitizer": "./src/sanitizer.ts",
-    "./stringify": "./src/stringify.ts"
+    "./stringify": "./src/stringify.ts",
+    "./types": "./src/types.ts"
   },
   "publish": {
     "include": ["src/", "pkg/", "README.md", "LICENSE"],

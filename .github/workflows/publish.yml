@@ -130,9 +130,35 @@ jobs:
       - name: Run Deno tests
         run: deno task test
 
+  test-rust:
+    name: Test (Rust)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry & build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/parser-wasm/target
+          key: cargo-test-${{ runner.os }}-${{ hashFiles('crates/parser-wasm/Cargo.toml') }}
+          restore-keys: cargo-test-${{ runner.os }}-
+
+      - name: Run Rust unit tests
+        working-directory: crates/parser-wasm
+        run: cargo test
+
   publish-jsr:
     name: Publish to JSR
-    needs: [test-bun, test-deno]
+    needs: [test-bun, test-deno, test-rust]
     if: github.event_name == 'push' && github.ref == 'refs/heads/av'
     runs-on: ubuntu-latest
     permissions:
