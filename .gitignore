@@ -14,9 +14,6 @@ build/
 **/target/
 **/*.rs.bk
 
-# wasm-pack build output (rebuilt in CI from Rust source)
-pkg/
-
 # Misc
 .DS_Store
 *.local
