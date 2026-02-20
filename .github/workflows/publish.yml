@@ -6,8 +6,6 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [av]
-  # Manual trigger runs build + tests only (no publish/release),
-  # because github.ref will be a branch ref, not a tag.
   workflow_dispatch:
 
 concurrency:
@@ -19,9 +17,6 @@ env:
   DENO_VERSION: "2.6.9"
 
 jobs:
-  # -------------------------------------------------------------------
-  # Preflight — fast version-consistency gate (no heavy tool installs)
-  # -------------------------------------------------------------------
   preflight:
     name: Preflight
     runs-on: ubuntu-latest
@@ -42,7 +37,6 @@ jobs:
             echo "::error::Version mismatch: package.json=$NPM_VERSION, jsr.json=$JSR_VERSION"
             exit 1
           fi
-          # On tag pushes, verify the tag matches the declared version
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG_VERSION="${GITHUB_REF#refs/tags/v}"
             if [ "$NPM_VERSION" != "$TAG_VERSION" ]; then
@@ -52,9 +46,6 @@ jobs:
           fi
           echo "Version consistent: $NPM_VERSION"
 
-  # -------------------------------------------------------------------
-  # Build WASM — Rust → wasm-pack → artifact
-  # -------------------------------------------------------------------
   build-wasm:
     name: Build WASM
     needs: [preflight]
@@ -105,9 +96,6 @@ jobs:
           path: pkg/
           retention-days: 1
 
-  # -------------------------------------------------------------------
-  # Tests — Bun, Deno, Rust, Worker (Miniflare)
-  # -------------------------------------------------------------------
   test-bun:
     name: Test (Bun)
     needs: [build-wasm]
@@ -222,9 +210,6 @@ jobs:
       - name: Run Worker integration tests
         run: bun run test:worker
 
-  # -------------------------------------------------------------------
-  # Publish — only on tag pushes (v*)
-  # -------------------------------------------------------------------
   publish-jsr:
     name: Publish to JSR
     needs: [test-bun, test-deno, test-rust, test-worker]
@@ -266,15 +251,8 @@ jobs:
 
       - name: Publish to JSR
         if: steps.jsr_check.outputs.exists == 'false'
-        # --allow-dirty is required: the downloaded WASM artifact (pkg/) is
-        # listed in .gitignore, so deno publish sees an unclean working tree.
-        # The artifact comes from the controlled build-wasm job — not from an
-        # unverified source.
         run: deno publish --allow-dirty --config jsr.json
 
-  # -------------------------------------------------------------------
-  # Release — create GitHub Release for the pushed tag
-  # -------------------------------------------------------------------
   release:
     name: GitHub Release
     needs: [publish-jsr]
@@ -303,7 +281,6 @@ jobs:
           if [ $rc -eq 0 ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           elif [ $rc -eq 1 ]; then
-            # exit code 1 = release not found
             echo "exists=false" >> "$GITHUB_OUTPUT"
           else
             echo "::error::gh release view failed (exit $rc)"
