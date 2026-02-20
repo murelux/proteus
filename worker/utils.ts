@@ -167,7 +167,7 @@ export async function readKVEntry(
     return jsonError("Internal server error", 500, cors);
   }
 
-  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+  if (data === null || typeof data !== "object") {
     console.error(`Unexpected data type for slug "${slug}": ${typeof data}`);
     return jsonError("Internal server error", 500, cors);
   }
