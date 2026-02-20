@@ -1,18 +1,63 @@
-name: Publish Proteus
+name: CI & Publish
 
 on:
   push:
     branches: [av]
+    tags: ["v*"]
   pull_request:
     branches: [av]
+  # Manual trigger runs build + tests only (no publish/release),
+  # because github.ref will be a branch ref, not a tag.
+  workflow_dispatch:
 
 concurrency:
-  group: publish-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  BUN_VERSION: "1.3.9"
+  DENO_VERSION: "2.6.9"
+
 jobs:
+  # -------------------------------------------------------------------
+  # Preflight — fast version-consistency gate (no heavy tool installs)
+  # -------------------------------------------------------------------
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Verify version consistency
+        run: |
+          for f in package.json jsr.json; do
+            [ -f "$f" ] || { echo "::error::Missing $f"; exit 1; }
+          done
+          NPM_VERSION=$(jq -r .version package.json)
+          JSR_VERSION=$(jq -r .version jsr.json)
+          if [ "$NPM_VERSION" != "$JSR_VERSION" ]; then
+            echo "::error::Version mismatch: package.json=$NPM_VERSION, jsr.json=$JSR_VERSION"
+            exit 1
+          fi
+          # On tag pushes, verify the tag matches the declared version
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+            if [ "$NPM_VERSION" != "$TAG_VERSION" ]; then
+              echo "::error::Tag $TAG_VERSION ≠ package version $NPM_VERSION"
+              exit 1
+            fi
+          fi
+          echo "Version consistent: $NPM_VERSION"
+
+  # -------------------------------------------------------------------
+  # Build WASM — Rust → wasm-pack → artifact
+  # -------------------------------------------------------------------
   build-wasm:
     name: Build WASM
+    needs: [preflight]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -33,26 +78,16 @@ jobs:
             ~/.cargo/git
             ~/.cargo/bin
             crates/parser-wasm/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('crates/parser-wasm/Cargo.toml') }}
-          restore-keys: cargo-${{ runner.os }}-
+          key: cargo-wasm-${{ runner.os }}-${{ hashFiles('crates/parser-wasm/Cargo.lock') }}
+          restore-keys: cargo-wasm-${{ runner.os }}-
 
       - name: Install wasm-pack
         run: command -v wasm-pack || cargo install wasm-pack --locked
 
-      - name: Verify version consistency
-        run: |
-          NPM_VERSION=$(jq -r .version package.json)
-          JSR_VERSION=$(jq -r .version jsr.json)
-          if [ "$NPM_VERSION" != "$JSR_VERSION" ]; then
-            echo "::error::Version mismatch: package.json=$NPM_VERSION, jsr.json=$JSR_VERSION"
-            exit 1
-          fi
-          echo "Version consistent: $NPM_VERSION"
-
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.9"
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -70,6 +105,9 @@ jobs:
           path: pkg/
           retention-days: 1
 
+  # -------------------------------------------------------------------
+  # Tests — Bun, Deno, Rust, Worker (Miniflare)
+  # -------------------------------------------------------------------
   test-bun:
     name: Test (Bun)
     needs: [build-wasm]
@@ -89,7 +127,7 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.9"
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -119,7 +157,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: "2.6.9"
+          deno-version: ${{ env.DENO_VERSION }}
 
       - name: Cache Deno dependencies
         run: deno install
@@ -132,6 +170,7 @@ jobs:
 
   test-rust:
     name: Test (Rust)
+    needs: [preflight]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -149,17 +188,47 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             crates/parser-wasm/target
-          key: cargo-test-${{ runner.os }}-${{ hashFiles('crates/parser-wasm/Cargo.toml') }}
+          key: cargo-test-${{ runner.os }}-${{ hashFiles('crates/parser-wasm/Cargo.lock') }}
           restore-keys: cargo-test-${{ runner.os }}-
 
       - name: Run Rust unit tests
         working-directory: crates/parser-wasm
         run: cargo test
 
+  test-worker:
+    name: Test (Worker)
+    needs: [build-wasm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Download WASM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-pkg
+          path: pkg/
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run Worker integration tests
+        run: bun run test:worker
+
+  # -------------------------------------------------------------------
+  # Publish — only on tag pushes (v*)
+  # -------------------------------------------------------------------
   publish-jsr:
     name: Publish to JSR
-    needs: [test-bun, test-deno, test-rust]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/av'
+    needs: [test-bun, test-deno, test-rust, test-worker]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -177,7 +246,7 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: "2.6.9"
+          deno-version: ${{ env.DENO_VERSION }}
 
       - name: Check if version exists on JSR
         id: jsr_check
@@ -188,17 +257,28 @@ jobs:
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://jsr.io/@${SCOPE}/${PACKAGE}/${VERSION}_meta.json")
           if [ "$HTTP_STATUS" = "200" ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
+          elif [ "$HTTP_STATUS" = "404" ]; then
             echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Unexpected JSR response: HTTP $HTTP_STATUS"
+            exit 1
           fi
 
       - name: Publish to JSR
         if: steps.jsr_check.outputs.exists == 'false'
+        # --allow-dirty is required: the downloaded WASM artifact (pkg/) is
+        # listed in .gitignore, so deno publish sees an unclean working tree.
+        # The artifact comes from the controlled build-wasm job — not from an
+        # unverified source.
         run: deno publish --allow-dirty --config jsr.json
 
+  # -------------------------------------------------------------------
+  # Release — create GitHub Release for the pushed tag
+  # -------------------------------------------------------------------
   release:
     name: GitHub Release
     needs: [publish-jsr]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -206,36 +286,32 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
 
-      - name: Extract version
+      - name: Extract tag name
         id: version
-        run: |
-          VERSION=$(jq -r .version package.json)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
-      - name: Check if tag exists
-        id: tag_check
+      - name: Check if release already exists
+        id: release_check
         env:
-          TAG_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          if git ls-remote --tags origin "refs/tags/v${TAG_VERSION}" | grep -q .; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Create tag
-        if: steps.tag_check.outputs.exists == 'false'
-        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ steps.version.outputs.tag }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
-          git push origin "$TAG_NAME"
+          set +e
+          gh release view "$TAG_NAME" &>/dev/null
+          rc=$?
+          set -e
+          if [ $rc -eq 0 ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          elif [ $rc -eq 1 ]; then
+            # exit code 1 = release not found
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::gh release view failed (exit $rc)"
+            exit 1
+          fi
 
       - name: Create GitHub Release
-        if: steps.tag_check.outputs.exists == 'false'
+        if: steps.release_check.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ steps.version.outputs.tag }}

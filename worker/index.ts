@@ -24,8 +24,7 @@ import {
  */
 type Env = WorkerEnv;
 
-/** Cached TextEncoder / TextDecoder instances for the worker. */
-const textEncoder = new TextEncoder();
+/** Cached TextDecoder instance for the worker. */
 const textDecoder = new TextDecoder();
 
 /**
@@ -140,8 +139,7 @@ async function handlePost(request: Request, cors: Record<string, string>): Promi
   if (
     contentType &&
     !contentType.startsWith("text/") &&
-    !contentType.startsWith("application/json") &&
-    !contentType.startsWith("application/x-www-form-urlencoded")
+    !contentType.startsWith("application/json")
   ) {
     return jsonError(`Unsupported Content-Type: ${contentType.split(";")[0]}`, 415, cors);
   }
@@ -155,35 +153,38 @@ async function handlePost(request: Request, cors: Record<string, string>): Promi
 
     // Stream-read the body with a size cap to avoid buffering oversized
     // payloads entirely into memory before rejecting them.
-    let markdown: string;
-    if (request.body) {
-      const reader = request.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let received = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        received += value.byteLength;
-        if (received > MAX_BODY_SIZE) {
-          reader.cancel();
-          return jsonError(`Request body too large (max: ${MAX_BODY_SIZE} bytes)`, 413, cors);
-        }
-        chunks.push(value);
-      }
-      const merged = new Uint8Array(received);
-      let offset = 0;
-      for (const chunk of chunks) {
-        merged.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-      markdown = textDecoder.decode(merged);
-    } else {
-      markdown = await request.text();
-      const byteLength = textEncoder.encode(markdown).byteLength;
-      if (byteLength > MAX_BODY_SIZE) {
+    // NOTE: `request.body` may be null for edge-case POST requests with
+    // no body. A bare `new ReadableStream()` (no underlying source) would
+    // hang forever on `reader.read()` because `close()` is never called.
+    // Create a properly-closed empty stream so the reader immediately
+    // signals `done: true`.
+    const body =
+      request.body ??
+      new ReadableStream<Uint8Array>({
+        start(c) {
+          c.close();
+        },
+      });
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > MAX_BODY_SIZE) {
+        reader.cancel();
         return jsonError(`Request body too large (max: ${MAX_BODY_SIZE} bytes)`, 413, cors);
       }
+      chunks.push(value);
     }
+    const merged = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const markdown = textDecoder.decode(merged);
     const result = await parseFrontMatter(markdown);
     return jsonSuccess(result, cors);
   } catch (err) {
@@ -194,7 +195,11 @@ async function handlePost(request: Request, cors: Record<string, string>): Promi
   }
 }
 
-async function handleBySlug(slug: string, kv: KVLike, cors: Record<string, string>): Promise<Response> {
+async function handleBySlug(
+  slug: string,
+  kv: KVLike,
+  cors: Record<string, string>,
+): Promise<Response> {
   const validationError = validateSlugAndKV(slug, kv, cors);
   if (validationError) return validationError;
 
@@ -226,6 +231,11 @@ async function handleBySlug(slug: string, kv: KVLike, cors: Record<string, strin
       return jsonError("Not found", 404, cors);
     }
 
+    if (typeof entry.key !== "string" || !entry.key) {
+      console.error(`_index entry for slug "${slug}" has no valid key`);
+      return jsonError("Internal server error", 500, cors);
+    }
+
     // Fetch the full article by its KV key
     return readKVEntry(kv, entry.key, slug, cors);
   } catch (err) {
@@ -237,7 +247,11 @@ async function handleBySlug(slug: string, kv: KVLike, cors: Record<string, strin
   }
 }
 
-async function handleGetSlug(slug: string, kv: KVLike, cors: Record<string, string>): Promise<Response> {
+async function handleGetSlug(
+  slug: string,
+  kv: KVLike,
+  cors: Record<string, string>,
+): Promise<Response> {
   const validationError = validateSlugAndKV(slug, kv, cors);
   if (validationError) return validationError;
 

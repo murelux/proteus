@@ -95,4 +95,9 @@ describe("readFrontMatter", () => {
     expect(results[0].data.title).toBe("Test 1");
     expect(results[1].data.title).toBe("Test 2");
   });
+
+  it("should return empty array for readFrontMatterMany with no paths", async () => {
+    const results = await readFrontMatterMany([]);
+    expect(results).toEqual([]);
+  });
 });

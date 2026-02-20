@@ -8,9 +8,9 @@ import { defineConfig } from "vitest/config";
  * require a build step and have a longer setup timeout.
  */
 export default defineConfig({
-	test: {
-		include: ["tests/worker-integration.test.ts"],
-		testTimeout: 30_000,
-		hookTimeout: 90_000,
-	},
+  test: {
+    include: ["tests/worker-integration.test.ts"],
+    testTimeout: 30_000,
+    hookTimeout: 90_000,
+  },
 });

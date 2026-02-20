@@ -209,5 +209,9 @@ describe("YAML type normalization roundtrip", () => {
     // Note: the exact roundtrip behavior depends on the serializer's quoting rules
     expect(data.val_null).toBeDefined();
     expect(data.val_true).toBeDefined();
+    // Verify values survived as strings (not coerced to boolean/null)
+    expect(typeof data.val_null).toBe("string");
+    expect(typeof data.val_true).toBe("string");
+    expect(typeof data.val_tilde).toBe("string");
   });
 });

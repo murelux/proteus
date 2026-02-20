@@ -1,7 +1,7 @@
 # Proteus Matter
 
 [![JSR](https://jsr.io/badges/@quill/proteus)](https://jsr.io/@quill/proteus)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
 Markdown front matter parsing and serialization library. Uses **Rust → WebAssembly** as the YAML / JSON / TOML parsing and serialization core, with a TypeScript layer handling extraction, detection, validation, and I/O.
 
@@ -289,4 +289,4 @@ For the complete guide — WASM build, linting, type checking, project structure
 
 ## License
 
-[AGPL-3.0-only](LICENSE)
+[Apache-2.0](LICENSE)

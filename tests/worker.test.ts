@@ -13,6 +13,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { parseFrontMatter, sanitizeErrorMessage } from "../src/index.js";
+import type { KVLike, WorkerEnv } from "../worker/utils.js";
 import {
   corsHeaders,
   isValidNamespace,
@@ -25,7 +26,6 @@ import {
   SLUG_PATTERN,
   securityHeaders,
 } from "../worker/utils.js";
-import type { KVLike, WorkerEnv } from "../worker/utils.js";
 
 // ---------------------------------------------------------------------------
 // Slug validation (imported from worker/utils.ts)
@@ -196,7 +196,11 @@ describe("Worker — error sanitization (shared)", () => {
 const TEST_ALLOWED_ORIGINS = "https://example.com,https://app.example.com";
 
 /** Mock KV store that always returns null (no data). */
-const mockKV: KVLike = { async get() { return null; } };
+const mockKV: KVLike = {
+  async get() {
+    return null;
+  },
+};
 
 /** Simulated environment with a "content" namespace. */
 const testEnv: WorkerEnv = {

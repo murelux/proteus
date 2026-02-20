@@ -67,20 +67,9 @@ export class DepthExceededError extends FrontMatterError {
 }
 
 /**
- * Check if an object tree contains any dangerous keys.
- * Returns `true` if no sanitization is needed (fast path).
- *
- * NOTE: Both `isSafe` and `sanitizeDeep` independently enforce `MAX_DEPTH`.
- * If a tree exceeds the depth limit, `DepthExceededError` is thrown during
- * the `isSafe` check — before `sanitizeDeep` is ever reached.
- *
- * ASYMMETRY NOTE: When a dangerous key is found at any depth, `isSafe`
- * returns `false` immediately (short-circuits) without descending further.
- * The subsequent `sanitizeDeep` call will then traverse the full tree with
- * its own independent depth tracking. This is intentional: `isSafe` is an
- * optimistic fast-path that only needs to detect "any dangerous key exists",
- * while `sanitizeDeep` is the thorough pass that strips keys and enforces
- * depth limits during cloning.
+ * Optimistic fast-path: returns `true` when no dangerous keys exist,
+ * allowing `sanitizeKeys` to skip the deep-clone entirely.
+ * Both `isSafe` and `sanitizeDeep` independently enforce `MAX_DEPTH`.
  */
 function isSafe(obj: unknown, dangerousKeys: Set<string>, depth = 0): boolean {
   if (depth > MAX_DEPTH) throw new DepthExceededError();

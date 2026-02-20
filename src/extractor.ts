@@ -184,5 +184,3 @@ function tryExtract(source: string, pair: DelimiterPair): ExtractionResult | und
 
   return { rawData, content, delimiter: pair };
 }
-
-// findCloseDelimiter is now exported above for shared use.

@@ -4,6 +4,7 @@
     "jsr:@std/assert@*": "1.0.18",
     "jsr:@std/assert@1": "1.0.18",
     "jsr:@std/internal@^1.0.12": "1.0.12",
+    "jsr:@std/yaml@*": "1.0.11",
     "npm:@biomejs/biome@^2.3.0": "2.4.2",
     "npm:@types/bun@^1.3.9": "1.3.9",
     "npm:rimraf@^6.1.2": "6.1.3",
@@ -23,6 +24,9 @@
     },
     "@std/internal@1.0.12": {
       "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
+    },
+    "@std/yaml@1.0.11": {
+      "integrity": "bd139ce77f2d06cbed3713c8b26d301d2a2e12ecc7986130a268107e212143ee"
     }
   },
   "npm": {
@@ -1246,6 +1250,7 @@
       "dependencies": [
         "npm:@biomejs/biome@^2.3.0",
         "npm:@types/bun@^1.3.9",
+        "npm:miniflare@^4.20260219.0",
         "npm:rimraf@^6.1.2",
         "npm:tinybench@3",
         "npm:valibot@1",

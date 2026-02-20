@@ -94,7 +94,8 @@
     "wasm",
     "parser"
   ],
-  "license": "AGPL-3.0-only",
+  "author": "Cong Lu (https://github.com/murelux)",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/murelux/proteus.git"

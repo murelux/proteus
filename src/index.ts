@@ -340,7 +340,17 @@ function parseFrontMatterCore<T = Record<string, unknown>>(
         .then(buildResult)
         .catch((err) => handleError(err, strict, extraction, format, excerpt));
     }
-    return buildResult(rawOrPromise);
+
+    // The raw data resolved synchronously (e.g. JSON fast-path with
+    // pre-parsed data), but `buildResult` may still return a Promise
+    // when async schema validation is requested.  Attach a `.catch()`
+    // so that validation rejections honour the `strict: false` contract
+    // instead of propagating as unhandled rejections.
+    const result = buildResult(rawOrPromise);
+    if (result instanceof Promise) {
+      return result.catch((err) => handleError(err, strict, extraction, format, excerpt));
+    }
+    return result;
   } catch (err) {
     return handleError(err, strict, extraction, format, excerpt);
   }
@@ -506,14 +516,15 @@ export async function readFrontMatterMany<T = Record<string, unknown>>(
   options?: ParseOptions,
   concurrency = MAX_CONCURRENCY,
 ): Promise<ParseResult<T>[]> {
+  if (paths.length === 0) return [];
+
   const limit = Math.max(1, Math.min(concurrency, paths.length));
   const results: ParseResult<T>[] = new Array(paths.length);
-  const queue = paths.map((_, i) => i);
+  let nextIndex = 0;
 
   async function worker(): Promise<void> {
-    while (queue.length > 0) {
-      const idx = queue.shift();
-      if (idx === undefined) break;
+    while (nextIndex < paths.length) {
+      const idx = nextIndex++;
       try {
         results[idx] = await readFrontMatter<T>(paths[idx], options);
       } catch (err) {

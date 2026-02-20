@@ -20,6 +20,6 @@
     }
   },
   "files": {
-    "includes": ["**", "!**/pkg", "!**/dist", "!**/crates", "!**/node_modules"]
+    "includes": ["**", "!**/pkg", "!**/dist", "!**/crates", "!**/node_modules", "!**/.wrangler"]
   }
 }

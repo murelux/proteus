@@ -8,31 +8,41 @@ const MAX_INPUT_SIZE: usize = 1_048_576;
 /// Serializer configured to emit plain JS objects instead of `Map` instances.
 const JS_SERIALIZER: Serializer = Serializer::new().serialize_maps_as_objects(true);
 
-/// Reject inputs that exceed `MAX_INPUT_SIZE`.
-fn check_input_size(input: &str) -> Result<(), JsError> {
+/// Reject inputs that exceed `MAX_INPUT_SIZE` (pure Rust, no wasm-bindgen dependency).
+fn validate_input_size(input: &str) -> Result<(), String> {
     if input.len() > MAX_INPUT_SIZE {
-        return Err(JsError::new(&format!(
+        return Err(format!(
             "Input too large: {} bytes (max: {} bytes)",
             input.len(),
             MAX_INPUT_SIZE
-        )));
+        ));
     }
     Ok(())
+}
+
+/// Reject inputs — JsError wrapper for WASM exports.
+fn check_input_size(input: &str) -> Result<(), JsError> {
+    validate_input_size(input).map_err(|e| JsError::new(&e))
 }
 
 /// Maximum allowed output size (1 MB).
 const MAX_OUTPUT_SIZE: usize = 1_048_576;
 
-/// Reject serialized output that exceeds `MAX_OUTPUT_SIZE`.
-fn check_output_size(output: String) -> Result<String, JsError> {
+/// Reject serialized output that exceeds `MAX_OUTPUT_SIZE` (pure Rust).
+fn validate_output_size(output: String) -> Result<String, String> {
     if output.len() > MAX_OUTPUT_SIZE {
-        return Err(JsError::new(&format!(
+        return Err(format!(
             "Output too large: {} bytes (max: {} bytes)",
             output.len(),
             MAX_OUTPUT_SIZE
-        )));
+        ));
     }
     Ok(output)
+}
+
+/// Reject output — JsError wrapper for WASM exports.
+fn check_output_size(output: String) -> Result<String, JsError> {
+    validate_output_size(output).map_err(|e| JsError::new(&e))
 }
 
 /// Serialize any `Serialize` value into a `JsValue` using object-style maps.
@@ -264,13 +274,13 @@ mod tests {
     #[test]
     fn test_check_input_size_within_limit() {
         let input = "a".repeat(MAX_INPUT_SIZE);
-        assert!(check_input_size(&input).is_ok());
+        assert!(validate_input_size(&input).is_ok());
     }
 
     #[test]
     fn test_check_input_size_exceeds_limit() {
         let input = "a".repeat(MAX_INPUT_SIZE + 1);
-        let result = check_input_size(&input);
+        let result = validate_input_size(&input);
         assert!(result.is_err());
     }
 
@@ -279,20 +289,20 @@ mod tests {
         // Each CJK character is 3 bytes in UTF-8, so 350_000 chars ≈ 1.05 MB
         let input: String = std::iter::repeat('中').take(350_000).collect();
         assert!(input.len() > MAX_INPUT_SIZE);
-        let result = check_input_size(&input);
+        let result = validate_input_size(&input);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_check_output_size_within_limit() {
         let output = "b".repeat(MAX_OUTPUT_SIZE);
-        assert!(check_output_size(output).is_ok());
+        assert!(validate_output_size(output).is_ok());
     }
 
     #[test]
     fn test_check_output_size_exceeds_limit() {
         let output = "b".repeat(MAX_OUTPUT_SIZE + 1);
-        let result = check_output_size(output);
+        let result = validate_output_size(output);
         assert!(result.is_err());
     }
 
