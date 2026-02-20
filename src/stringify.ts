@@ -1,3 +1,17 @@
+/**
+ * @module
+ *
+ * Serialise a data object back into a Markdown string with front matter.
+ * Supports YAML, TOML, and JSON output formats via the Rust WASM backend.
+ *
+ * @example
+ * ```ts
+ * import { stringifyFrontMatter } from "@quill/proteus/stringify";
+ *
+ * const md = await stringifyFrontMatter({ title: "Hello" }, "# Body");
+ * ```
+ */
+
 import type { DelimiterPair, FrontMatterFormat, StringifyOptions } from "./types.js";
 import { FrontMatterError } from "./types.js";
 import type { WasmParsers } from "./wasm-loader.js";

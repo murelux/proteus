@@ -1,4 +1,6 @@
 /**
+ * @module
+ *
  * Sanitize parsed objects by stripping keys that could trigger
  * **prototype pollution** when the consumer merges or spreads the data
  * into other objects.

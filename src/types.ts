@@ -1,3 +1,11 @@
+/**
+ * @module
+ *
+ * Shared type definitions, interfaces, and error classes used across
+ * `@quill/proteus`. Import from this module when you need to annotate
+ * function signatures or catch specific error subtypes.
+ */
+
 /** Supported front matter formats. */
 export type FrontMatterFormat = "yaml" | "json" | "toml";
 
