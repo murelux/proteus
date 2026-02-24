@@ -97,7 +97,12 @@ export function validateDelimiters(delimiters: readonly DelimiterPair[]): void {
         "Invalid delimiter pair: both open and close must be non-empty strings.",
       );
     }
-    if (open.includes("\n") || close.includes("\n") || open.includes("\r") || close.includes("\r")) {
+    if (
+      open.includes("\n") ||
+      close.includes("\n") ||
+      open.includes("\r") ||
+      close.includes("\r")
+    ) {
       throw new ExtractionError(
         "Invalid delimiter pair: delimiters must not contain newline characters.",
       );
@@ -122,7 +127,7 @@ export function stripBom(source: string): string {
  */
 export function findCloseDelimiter(source: string, close: string, searchFrom: number): number {
   let pos = searchFrom - 1;
-  for (; ;) {
+  for (;;) {
     let idx = source.indexOf(`\n${close}`, pos);
     if (idx === -1) {
       // Also try \r\n before close.

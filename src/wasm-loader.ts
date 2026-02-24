@@ -14,14 +14,14 @@
 // Type declarations for runtime-specific globals
 declare const Deno:
   | {
-    readFile(path: string | URL): Promise<Uint8Array>;
-  }
+      readFile(path: string | URL): Promise<Uint8Array>;
+    }
   | undefined;
 
 declare const Bun:
   | {
-    file(path: string | URL): { arrayBuffer(): Promise<ArrayBuffer> };
-  }
+      file(path: string | URL): { arrayBuffer(): Promise<ArrayBuffer> };
+    }
   | undefined;
 
 // biome-ignore lint/suspicious/noExplicitAny: WASM module shape is dynamic
@@ -52,7 +52,7 @@ function validateWasmModule(mod: unknown): asserts mod is WasmParsers {
     if (typeof (mod as Record<string, unknown>)[name] !== "function") {
       throw new Error(
         `WASM module is missing expected export "${name}". ` +
-        "The binary may be corrupted or built from an incompatible version.",
+          "The binary may be corrupted or built from an incompatible version.",
       );
     }
   }
@@ -123,11 +123,7 @@ export async function initWasm(): Promise<void> {
  */
 export function _resetWasmCache(): void {
   // Warn if this is called outside of a test environment
-  if (
-    typeof process !== "undefined" &&
-    process.env &&
-    process.env.NODE_ENV === "production"
-  ) {
+  if (typeof process !== "undefined" && process.env && process.env.NODE_ENV === "production") {
     console.warn("proteus: `_resetWasmCache` should only be used in testing environments.");
   }
   wasmModule = null;
@@ -142,7 +138,9 @@ export function _resetWasmCache(): void {
  */
 export function _preloadWasmModule(mod: WasmParsers): void {
   if (wasmModule !== null) {
-    throw new Error("WASM module is already initialised. `_preloadWasmModule` can only be called once.");
+    throw new Error(
+      "WASM module is already initialised. `_preloadWasmModule` can only be called once.",
+    );
   }
   wasmModule = mod;
   initPromise = Promise.resolve(mod);
@@ -177,7 +175,10 @@ async function readWasmFile(url: URL): Promise<ArrayBuffer> {
       const { readFile } = await import("node:fs/promises");
       const { fileURLToPath } = await import("node:url");
       const buffer = await readFile(fileURLToPath(url));
-      return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+      return buffer.buffer.slice(
+        buffer.byteOffset,
+        buffer.byteOffset + buffer.byteLength,
+      ) as ArrayBuffer;
     } catch (err) {
       throw new Error(`Failed to read WASM file via node:fs: ${String(err)}`);
     }

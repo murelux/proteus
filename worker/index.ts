@@ -168,7 +168,7 @@ async function handlePost(request: Request, cors: Record<string, string>): Promi
     const reader = body.getReader();
     const chunks: Uint8Array[] = [];
     let received = 0;
-    for (; ;) {
+    for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       received += value.byteLength;

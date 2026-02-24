@@ -59,13 +59,16 @@ async function lazyValidate<T>(data: unknown, schema: AnySchema): Promise<T> {
   if (!_validateFn) {
     await initValidator();
   }
-  const fn = _validateFn!;
+  if (!_validateFn) {
+    throw new FrontMatterError("Failed to initialize validator");
+  }
+  const fn = _validateFn;
   return fn(data, schema) as T;
 }
 
 /**
  * Pre-load the Valibot schema validation module.
- * 
+ *
  * Required before using `parseFrontMatterSync` if a schema is provided.
  *
  * @example
@@ -87,7 +90,7 @@ function lazyValidateSync<T>(data: unknown, schema: AnySchema): T {
   if (!_validateFn) {
     throw new FrontMatterError(
       "Schema validation in sync mode requires the validator to be pre-loaded. " +
-      "Call `await initValidator()` first before attempting synchronous parsing with a schema."
+        "Call `await initValidator()` first before attempting synchronous parsing with a schema.",
     );
   }
   return _validateFn(data, schema) as T;
@@ -272,7 +275,7 @@ export function parseFrontMatterSync<T = Record<string, unknown>>(
   if (result instanceof Promise) {
     throw new FrontMatterError(
       "Internal error: parseFrontMatterSync produced a Promise. " +
-      "This indicates a bug — sync callbacks must not return Promises.",
+        "This indicates a bug — sync callbacks must not return Promises.",
     );
   }
 
@@ -510,7 +513,7 @@ export async function readFrontMatter<T = Record<string, unknown>>(
   path: string | URL,
   options?: ParseOptions,
 ): Promise<ParseResult<T>> {
-  const content = await readFileContent(path, { allowRemoteUrls: options?.allowRemoteUrls });
+  const content = await readFileContent(path);
   return parseFrontMatter<T>(content, options);
 }
 

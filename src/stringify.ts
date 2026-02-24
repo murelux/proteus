@@ -12,9 +12,9 @@
  * ```
  */
 
+import { validateDelimiters } from "./extractor.js";
 import type { DelimiterPair, FrontMatterFormat, StringifyOptions } from "./types.js";
 import { FrontMatterError } from "./types.js";
-import { validateDelimiters } from "./extractor.js";
 import type { WasmParsers } from "./wasm-loader.js";
 import { getWasmParsers, getWasmParsersSync } from "./wasm-loader.js";
 

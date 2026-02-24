@@ -106,7 +106,7 @@ export function isPrivateHostname(hostname: string): boolean {
  */
 export async function readFileContent(
   path: string | URL,
-  options?: { allowRemoteUrls?: boolean }
+  options?: { allowRemoteUrls?: boolean },
 ): Promise<string> {
   // 1. Fetch (HTTP/HTTPS) - prioritize for all runtimes
   if (
@@ -115,7 +115,7 @@ export async function readFileContent(
   ) {
     if (!options?.allowRemoteUrls) {
       throw new Error(
-        `Remote URL fetching is disabled by default for security. Pass \`allowRemoteUrls: true\` in options to read from ${String(path)}`
+        `Remote URL fetching is disabled by default for security. Pass \`allowRemoteUrls: true\` in options to read from ${String(path)}`,
       );
     }
     return fetchContent(path);
@@ -197,10 +197,13 @@ async function fetchContent(path: string | URL): Promise<string> {
         if (redirectCount > MAX_REDIRECTS) {
           throw new Error(`Too many redirects (max ${MAX_REDIRECTS}) for ${String(path)}`);
         }
-        const location = res.headers.get("location")!;
+        const location = res.headers.get("location");
+        if (!location) {
+          throw new Error(`Missing location header for redirect from ${String(path)}`);
+        }
         url = new URL(location, url);
         // Consume the body of the redirect response to free up the socket
-        if (res.body) await res.text().catch(() => { });
+        if (res.body) await res.text().catch(() => {});
         continue;
       }
 
@@ -247,7 +250,7 @@ async function fetchContent(path: string | URL): Promise<string> {
     const reader = res.body.getReader();
     const chunks: Uint8Array[] = [];
     let received = 0;
-    for (; ;) {
+    for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       received += value.byteLength;
