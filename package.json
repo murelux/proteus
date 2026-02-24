@@ -69,7 +69,8 @@
     "deno": ">=2.0"
   },
   "scripts": {
-    "build": "[ -f pkg/matter_wasm_bg.wasm ] && echo 'Using pre-built WASM from pkg/' || bun run build:wasm",
+    "build": "bun run build:js",
+    "build:js": "echo 'JS build step - WASM is pre-built'",
     "build:wasm": "wasm-pack build crates/parser-wasm --target bundler --out-dir ../../pkg --release",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
