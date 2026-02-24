@@ -13,25 +13,24 @@ describe("sanitizeKeys", () => {
     expect(Object.hasOwn(result, "__proto__")).toBe(false);
   });
 
-  it("should preserve constructor key (legitimate data key)", () => {
+  it("should strip constructor key by default", () => {
     const raw = Object.create(null);
     raw.title = "Hello";
     raw.constructor = "Builder Pattern";
 
     const result = sanitizeKeys(raw) as Record<string, unknown>;
-    expect(result).toEqual({ title: "Hello", constructor: "Builder Pattern" });
-    expect(Object.hasOwn(result, "constructor")).toBe(true);
+    expect(result).toEqual({ title: "Hello" });
+    expect(Object.hasOwn(result, "constructor")).toBe(false);
   });
 
   it("should block constructor.prototype pollution chain", () => {
-    // Even though constructor is kept, prototype inside it is stripped
+    // Both constructor and prototype are stripped
     const raw = Object.create(null);
     raw.constructor = Object.create(null);
     raw.constructor.prototype = { polluted: true };
 
     const result = sanitizeKeys(raw) as Record<string, unknown>;
-    const ctor = result.constructor as Record<string, unknown>;
-    expect(Object.hasOwn(ctor, "prototype")).toBe(false);
+    expect(Object.hasOwn(result, "constructor")).toBe(false);
   });
 
   it("should strip prototype key", () => {
@@ -99,7 +98,7 @@ describe("sanitizeKeys", () => {
   // SanitizeOptions tests
   // ------------------------------------------------------------------
 
-  it("should strip constructor when stripConstructor is true", () => {
+  it("should strip constructor when stripConstructor is true (explicit)", () => {
     const raw = Object.create(null);
     raw.title = "Hello";
     raw.constructor = "Builder Pattern";
@@ -110,13 +109,13 @@ describe("sanitizeKeys", () => {
     expect(Object.hasOwn(result, "constructor")).toBe(false);
   });
 
-  it("should keep constructor by default (no options)", () => {
+  it("should strip constructor by default (no options)", () => {
     const raw = Object.create(null);
     raw.constructor = "SomeClass";
     raw.name = "test";
 
     const result = sanitizeKeys(raw) as Record<string, unknown>;
-    expect(result.constructor).toBe("SomeClass");
+    expect(Object.hasOwn(result, "constructor")).toBe(false);
     expect(result.name).toBe("test");
   });
 

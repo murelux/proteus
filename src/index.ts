@@ -57,11 +57,29 @@ let _validateFn: ((data: unknown, schema: AnySchema) => unknown) | null = null;
 /** Load the validator module on demand and cache it. */
 async function lazyValidate<T>(data: unknown, schema: AnySchema): Promise<T> {
   if (!_validateFn) {
+    await initValidator();
+  }
+  const fn = _validateFn!;
+  return fn(data, schema) as T;
+}
+
+/**
+ * Pre-load the Valibot schema validation module.
+ * 
+ * Required before using `parseFrontMatterSync` if a schema is provided.
+ *
+ * @example
+ * ```ts
+ * import { initValidator, parseFrontMatterSync } from "@quill/proteus";
+ * await initValidator();
+ * const result = parseFrontMatterSync(source, { schema: MySchema });
+ * ```
+ */
+export async function initValidator(): Promise<void> {
+  if (!_validateFn) {
     const mod = await import("./validator.js");
     _validateFn = mod.validate as (data: unknown, schema: AnySchema) => unknown;
   }
-  const fn = _validateFn;
-  return fn(data, schema) as T;
 }
 
 /** Use the cached validator synchronously. Throws if not yet loaded. */
@@ -69,8 +87,7 @@ function lazyValidateSync<T>(data: unknown, schema: AnySchema): T {
   if (!_validateFn) {
     throw new FrontMatterError(
       "Schema validation in sync mode requires the validator to be pre-loaded. " +
-        "Call `parseFrontMatter()` once with a schema first, or " +
-        "pre-load with: await import('@quill/proteus/validator')",
+      "Call `await initValidator()` first before attempting synchronous parsing with a schema."
     );
   }
   return _validateFn(data, schema) as T;
@@ -255,7 +272,7 @@ export function parseFrontMatterSync<T = Record<string, unknown>>(
   if (result instanceof Promise) {
     throw new FrontMatterError(
       "Internal error: parseFrontMatterSync produced a Promise. " +
-        "This indicates a bug — sync callbacks must not return Promises.",
+      "This indicates a bug — sync callbacks must not return Promises.",
     );
   }
 
@@ -493,7 +510,7 @@ export async function readFrontMatter<T = Record<string, unknown>>(
   path: string | URL,
   options?: ParseOptions,
 ): Promise<ParseResult<T>> {
-  const content = await readFileContent(path);
+  const content = await readFileContent(path, { allowRemoteUrls: options?.allowRemoteUrls });
   return parseFrontMatter<T>(content, options);
 }
 

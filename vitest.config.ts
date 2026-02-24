@@ -11,6 +11,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ["quill_matter_wasm"],
+    exclude: ["matter_wasm"],
   },
 });

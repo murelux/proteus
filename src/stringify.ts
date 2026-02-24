@@ -14,6 +14,7 @@
 
 import type { DelimiterPair, FrontMatterFormat, StringifyOptions } from "./types.js";
 import { FrontMatterError } from "./types.js";
+import { validateDelimiters } from "./extractor.js";
 import type { WasmParsers } from "./wasm-loader.js";
 import { getWasmParsers, getWasmParsersSync } from "./wasm-loader.js";
 
@@ -75,6 +76,9 @@ export async function stringifyFrontMatter(
   const format = options?.format ?? "yaml";
   const delimiter = options?.delimiter ?? FORMAT_DELIMITERS[format];
 
+  // Fix: Missing delimiter validation
+  validateDelimiters([delimiter]);
+
   const wasm = await getWasmParsers();
   const serialized = stringifyData(wasm, data, format);
 
@@ -97,6 +101,9 @@ export function stringifyFrontMatterSync(
 
   const format = options?.format ?? "yaml";
   const delimiter = options?.delimiter ?? FORMAT_DELIMITERS[format];
+
+  // Fix: Missing delimiter validation
+  validateDelimiters([delimiter]);
 
   const wasm = getWasmParsersSync();
   const serialized = stringifyData(wasm, data, format);

@@ -2,7 +2,7 @@
  * Lazy WASM module loader.
  *
  * Supports two loading modes:
- *  1. **Bundler** (Vitest, Vite, Cloudflare Workers) — `import("../pkg/quill_matter_wasm.js")`
+ *  1. **Bundler** (Vitest, Vite, Cloudflare Workers) — `import("../pkg/matter_wasm.js")`
  *  2. **Direct** (Bun, Deno) — manually instantiate the WASM binary
  *
  * The module is loaded once and cached for subsequent calls.
@@ -14,14 +14,14 @@
 // Type declarations for runtime-specific globals
 declare const Deno:
   | {
-      readFile(path: string | URL): Promise<Uint8Array>;
-    }
+    readFile(path: string | URL): Promise<Uint8Array>;
+  }
   | undefined;
 
 declare const Bun:
   | {
-      file(path: string | URL): { arrayBuffer(): Promise<ArrayBuffer> };
-    }
+    file(path: string | URL): { arrayBuffer(): Promise<ArrayBuffer> };
+  }
   | undefined;
 
 // biome-ignore lint/suspicious/noExplicitAny: WASM module shape is dynamic
@@ -52,7 +52,7 @@ function validateWasmModule(mod: unknown): asserts mod is WasmParsers {
     if (typeof (mod as Record<string, unknown>)[name] !== "function") {
       throw new Error(
         `WASM module is missing expected export "${name}". ` +
-          "The binary may be corrupted or built from an incompatible version.",
+        "The binary may be corrupted or built from an incompatible version.",
       );
     }
   }
@@ -122,6 +122,14 @@ export async function initWasm(): Promise<void> {
  * @internal
  */
 export function _resetWasmCache(): void {
+  // Warn if this is called outside of a test environment
+  if (
+    typeof process !== "undefined" &&
+    process.env &&
+    process.env.NODE_ENV === "production"
+  ) {
+    console.warn("proteus: `_resetWasmCache` should only be used in testing environments.");
+  }
   wasmModule = null;
   initPromise = null;
 }
@@ -133,6 +141,9 @@ export function _resetWasmCache(): void {
  * @internal
  */
 export function _preloadWasmModule(mod: WasmParsers): void {
+  if (wasmModule !== null) {
+    throw new Error("WASM module is already initialised. `_preloadWasmModule` can only be called once.");
+  }
   wasmModule = mod;
   initPromise = Promise.resolve(mod);
 }
@@ -160,7 +171,19 @@ async function readWasmFile(url: URL): Promise<ArrayBuffer> {
     return Bun.file(url).arrayBuffer();
   }
 
-  // Fallback: fetch (works in environments with file:// fetch support)
+  // Fallback: Node fs for file:// URLs in Vitest/Node when Bun/Deno are missing
+  if (url.protocol === "file:") {
+    try {
+      const { readFile } = await import("node:fs/promises");
+      const { fileURLToPath } = await import("node:url");
+      const buffer = await readFile(fileURLToPath(url));
+      return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+    } catch (err) {
+      throw new Error(`Failed to read WASM file via node:fs: ${String(err)}`);
+    }
+  }
+
+  // Fallback: fetch (works in environments with file:// fetch support or actual remote URLs)
   const response = await fetch(url);
   return response.arrayBuffer();
 }
@@ -190,7 +213,7 @@ async function loadWasm(): Promise<WasmParsers> {
 async function loadWasmInner(): Promise<WasmParsers> {
   try {
     // Bundler-friendly import (works in Vitest, Vite, Cloudflare Workers, etc.)
-    const mod = await import("../pkg/quill_matter_wasm.js");
+    const mod = await import("../pkg/matter_wasm.js");
     validateWasmModule(mod);
     wasmModule = mod;
     return mod;
@@ -200,7 +223,7 @@ async function loadWasmInner(): Promise<WasmParsers> {
       return await loadWasmDirect();
     } catch (directErr) {
       const hint =
-        "Ensure the WASM binary exists at pkg/quill_matter_wasm_bg.wasm " +
+        "Ensure the WASM binary exists at pkg/matter_wasm_bg.wasm " +
         "and was built with `bun run build:wasm`. " +
         "If running under a bundler, check that vite-plugin-wasm (or equivalent) is configured.";
       throw new Error(`Failed to load WASM module via both bundler and direct paths. ${hint}`, {
@@ -211,13 +234,13 @@ async function loadWasmInner(): Promise<WasmParsers> {
 }
 
 async function loadWasmDirect(): Promise<WasmParsers> {
-  const bgModule = await import("../pkg/quill_matter_wasm_bg.js");
+  const bgModule = await import("../pkg/matter_wasm_bg.js");
 
   // Resolve the .wasm path using web-standard `URL` constructor.
   // Works in Bun, Deno, and any environment with `import.meta.url`.
   let wasmUrl: URL;
   try {
-    wasmUrl = new URL("../pkg/quill_matter_wasm_bg.wasm", import.meta.url);
+    wasmUrl = new URL("../pkg/matter_wasm_bg.wasm", import.meta.url);
   } catch (err) {
     throw new Error(
       "Failed to resolve WASM binary path: `import.meta.url` may not be available in this runtime.",
@@ -236,7 +259,7 @@ async function loadWasmDirect(): Promise<WasmParsers> {
   }
 
   const wasmImports = {
-    "./quill_matter_wasm_bg.js": bgModule,
+    "./matter_wasm_bg.js": bgModule,
   };
 
   const { instance } = await WebAssembly.instantiate(wasmBytes, wasmImports);

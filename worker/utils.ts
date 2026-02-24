@@ -6,8 +6,8 @@
  */
 
 /** Allowed slug characters: alphanumeric, hyphens, underscores, dots, slashes.
- * Blocks path traversal sequences (".." consecutive dots). */
-export const SLUG_PATTERN = /^[a-zA-Z0-9_](?:[a-zA-Z0-9\-_/]|\.(?!\.))*$/;
+ * Blocks path traversal sequences (".." consecutive dots) and leading special chars. */
+export const SLUG_PATTERN = /^[a-zA-Z0-9](?:[a-zA-Z0-9\-_/]|\.(?!\.))*$/;
 
 /** Maximum slug length. */
 export const MAX_SLUG_LENGTH = 256;

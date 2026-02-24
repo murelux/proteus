@@ -146,10 +146,10 @@ Output files in `pkg/`:
 
 | File | Purpose |
 |:-----|:--------|
-| `quill_matter_wasm_bg.wasm` | Compiled WASM binary |
-| `quill_matter_wasm_bg.js` | JS glue code (wasm-bindgen generated) |
-| `quill_matter_wasm.js` | Public entry point |
-| `quill_matter_wasm.d.ts` | TypeScript declarations |
+| `matter_wasm_bg.wasm` | Compiled WASM binary |
+| `matter_wasm_bg.js` | JS glue code (wasm-bindgen generated) |
+| `matter_wasm.js` | Public entry point |
+| `matter_wasm.d.ts` | TypeScript declarations |
 
 Rust crate dependencies:
 

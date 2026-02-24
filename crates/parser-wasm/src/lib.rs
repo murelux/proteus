@@ -52,6 +52,23 @@ fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsError> {
         .map_err(|e| JsError::new(&format!("Serialization error: {e}")))
 }
 
+/// Maximum number of YAML aliases allowed to mitigate Billion Laughs DoS
+const MAX_YAML_ALIASES: usize = 50;
+
+/// Fast pre-scan to reject YAML inputs with excessive alias usage
+fn check_yaml_alias_limit(input: &str) -> Result<(), JsError> {
+    // Quickly count the number of alias nodes (*alias) in the string
+    // This is a heuristic pre-filter before passing to full serde parsing
+    let alias_count = input.matches('*').count();
+    if alias_count > MAX_YAML_ALIASES {
+        return Err(JsError::new(&format!(
+            "YAML parse error: Too many aliases (found {}, max {})",
+            alias_count, MAX_YAML_ALIASES
+        )));
+    }
+    Ok(())
+}
+
 /// Parse a YAML string into a JavaScript value.
 ///
 /// Uses `serde-saphyr` (pure Rust, YAML 1.2, no unsafe).
@@ -69,6 +86,8 @@ fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsError> {
 #[wasm_bindgen]
 pub fn parse_yaml(input: &str) -> Result<JsValue, JsError> {
     check_input_size(input)?;
+    check_yaml_alias_limit(input)?;
+    
     let value: serde_json::Value = serde_saphyr::from_str(input).map_err(|e| {
         // serde-saphyr errors include location info in the Display output
         JsError::new(&format!("YAML parse error: {e}"))

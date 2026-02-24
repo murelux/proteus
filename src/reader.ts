@@ -104,12 +104,20 @@ export function isPrivateHostname(hostname: string): boolean {
  *
  * @internal
  */
-export async function readFileContent(path: string | URL): Promise<string> {
+export async function readFileContent(
+  path: string | URL,
+  options?: { allowRemoteUrls?: boolean }
+): Promise<string> {
   // 1. Fetch (HTTP/HTTPS) - prioritize for all runtimes
   if (
     (path instanceof URL && (path.protocol === "http:" || path.protocol === "https:")) ||
     (typeof path === "string" && /^https?:/.test(path))
   ) {
+    if (!options?.allowRemoteUrls) {
+      throw new Error(
+        `Remote URL fetching is disabled by default for security. Pass \`allowRemoteUrls: true\` in options to read from ${String(path)}`
+      );
+    }
     return fetchContent(path);
   }
 
@@ -155,33 +163,52 @@ export async function readFileContent(path: string | URL): Promise<string> {
 // ---------------------------------------------------------------------------
 
 async function fetchContent(path: string | URL): Promise<string> {
-  // SSRF protection: block private/internal network addresses and non-http(s) schemes.
-  const url = path instanceof URL ? path : new URL(path);
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error(`Unsupported URL scheme: ${url.protocol}`);
-  }
-  const hostname = url.hostname.toLowerCase();
-  if (isPrivateHostname(hostname)) {
-    throw new Error(`Blocked request to private/internal address: ${hostname}`);
-  }
-
-  // Limit redirections — `fetch()` follows redirects by default.
-  // Use `redirect: "manual"` is too restrictive; instead set a redirect
-  // limit via `follow` on runtimes that support it, or rely on the default
-  // (typically 20). This is a defence-in-depth note for integrators.
+  let url = path instanceof URL ? path : new URL(path);
+  let res: Response;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  let res: Response;
+
+  let redirectCount = 0;
+  const MAX_REDIRECTS = 10;
+
   try {
-    res = await fetch(path, { signal: controller.signal });
-  } catch (err) {
-    clearTimeout(timeout);
-    if (err instanceof DOMException && err.name === "AbortError") {
-      throw new Error(`Fetch timed out after ${FETCH_TIMEOUT_MS}ms: ${String(path)}`);
+    while (true) {
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        throw new Error(`Unsupported URL scheme: ${url.protocol}`);
+      }
+      const hostname = url.hostname.toLowerCase();
+      if (isPrivateHostname(hostname)) {
+        throw new Error(`Blocked request to private/internal address: ${hostname}`);
+      }
+
+      try {
+        // Use manual redirect to enforce SSRF checks on the redirection targets
+        res = await fetch(url, { signal: controller.signal, redirect: "manual" });
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          throw new Error(`Fetch timed out after ${FETCH_TIMEOUT_MS}ms: ${String(path)}`);
+        }
+        throw err;
+      }
+
+      // Handle redirects manually
+      if (res.status >= 300 && res.status < 400 && res.headers.has("location")) {
+        redirectCount++;
+        if (redirectCount > MAX_REDIRECTS) {
+          throw new Error(`Too many redirects (max ${MAX_REDIRECTS}) for ${String(path)}`);
+        }
+        const location = res.headers.get("location")!;
+        url = new URL(location, url);
+        // Consume the body of the redirect response to free up the socket
+        if (res.body) await res.text().catch(() => { });
+        continue;
+      }
+
+      break;
     }
-    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
-  clearTimeout(timeout);
 
   if (!res.ok) {
     throw new Error(`Failed to fetch ${String(path)}: ${res.status} ${res.statusText}`);
@@ -220,7 +247,7 @@ async function fetchContent(path: string | URL): Promise<string> {
     const reader = res.body.getReader();
     const chunks: Uint8Array[] = [];
     let received = 0;
-    for (;;) {
+    for (; ;) {
       const { done, value } = await reader.read();
       if (done) break;
       received += value.byteLength;

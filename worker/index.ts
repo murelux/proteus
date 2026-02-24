@@ -1,7 +1,7 @@
 // @ts-expect-error: no type declarations for generated _bg.js
-import * as bgModule from "../pkg/quill_matter_wasm_bg.js";
+import * as bgModule from "../pkg/matter_wasm_bg.js";
 // @ts-expect-error: wrangler resolves .wasm imports as WebAssembly.Module
-import wasmBinary from "../pkg/quill_matter_wasm_bg.wasm";
+import wasmBinary from "../pkg/matter_wasm_bg.wasm";
 import { sanitizeErrorMessage } from "../src/error-utils.js";
 import { parseFrontMatter } from "../src/index.js";
 import { _preloadWasmModule } from "../src/wasm-loader.js";
@@ -36,7 +36,7 @@ const textDecoder = new TextDecoder();
  */
 const ready = (async () => {
   const instance = await WebAssembly.instantiate(wasmBinary, {
-    "./quill_matter_wasm_bg.js": bgModule,
+    "./matter_wasm_bg.js": bgModule,
   });
 
   // Wire the raw WASM exports into the JS glue layer.
@@ -168,7 +168,7 @@ async function handlePost(request: Request, cors: Record<string, string>): Promi
     const reader = body.getReader();
     const chunks: Uint8Array[] = [];
     let received = 0;
-    for (;;) {
+    for (; ;) {
       const { done, value } = await reader.read();
       if (done) break;
       received += value.byteLength;

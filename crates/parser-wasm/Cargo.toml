@@ -1,5 +1,5 @@
 [package]
-name = "quill-matter-wasm"
+name = "matter-wasm"
 version = "0.1.1"
 edition = "2021"
 description = "WASM-compiled parsers for YAML, JSON, and TOML front matter"

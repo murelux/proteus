@@ -34,18 +34,9 @@ export interface SanitizeOptions {
   stripConstructor?: boolean;
 }
 
-const BASE_DANGEROUS_KEYS = new Set(["__proto__", "prototype"]);
-
-/**
- * NOTE on JSON.parse and `__proto__`: JSON.parse() creates `__proto__` as a
- * regular own property (not affecting the prototype chain). However, consumers
- * using `Object.assign({}, result.data)` can still be exploited because
- * `Object.assign` triggers the setter for `__proto__` on the target object.
- * `sanitizeKeys` handles this correctly: `Object.keys()` enumerates own
- * properties including `__proto__`, and `isSafe` / `sanitizeDeep` will detect
- * and strip it.
- */
-const STRICT_DANGEROUS_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+// Now constructor is stripped by default to prevent prototype pollution chaining
+const BASE_DANGEROUS_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+const STRICT_DANGEROUS_KEYS = BASE_DANGEROUS_KEYS;
 
 /**
  * Maximum recursion depth for sanitization.
@@ -68,41 +59,57 @@ export class DepthExceededError extends FrontMatterError {
   }
 }
 
-/**
- * Optimistic fast-path: returns `true` when no dangerous keys exist,
- * allowing `sanitizeKeys` to skip the deep-clone entirely.
- * Both `isSafe` and `sanitizeDeep` independently enforce `MAX_DEPTH`.
- */
-function isSafe(obj: unknown, dangerousKeys: Set<string>, depth = 0): boolean {
-  if (depth > MAX_DEPTH) throw new DepthExceededError();
-  if (obj === null || typeof obj !== "object") return true;
-  if (Array.isArray(obj)) return obj.every((item) => isSafe(item, dangerousKeys, depth + 1));
-  for (const key of Object.keys(obj as Record<string, unknown>)) {
-    if (dangerousKeys.has(key)) return false;
-  }
-  return Object.values(obj as Record<string, unknown>).every((v) =>
-    isSafe(v, dangerousKeys, depth + 1),
-  );
-}
-
 export function sanitizeKeys(obj: unknown, options?: SanitizeOptions): unknown {
   if (obj === null || typeof obj !== "object") return obj;
   const dangerousKeys = options?.stripConstructor ? STRICT_DANGEROUS_KEYS : BASE_DANGEROUS_KEYS;
-  // Fast path: skip deep clone if no dangerous keys exist.
-  if (isSafe(obj, dangerousKeys)) return obj;
   return sanitizeDeep(obj, dangerousKeys);
 }
 
+/**
+ * Recursively clone objects/arrays if they contain dangerous keys.
+ * Implements "copy-on-write" to avoid unnecessarily cloning safe paths.
+ * Returns the exact original object if no dangerous keys were found.
+ */
 function sanitizeDeep(obj: unknown, dangerousKeys: Set<string>, depth = 0): unknown {
   if (depth > MAX_DEPTH) throw new DepthExceededError();
   if (obj === null || typeof obj !== "object") return obj;
-  if (Array.isArray(obj)) return obj.map((item) => sanitizeDeep(item, dangerousKeys, depth + 1));
 
-  const clean: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-    if (!dangerousKeys.has(key)) {
-      clean[key] = sanitizeDeep(value, dangerousKeys, depth + 1);
+  if (Array.isArray(obj)) {
+    let clonedArray: unknown[] | null = null;
+    for (let i = 0; i < obj.length; i++) {
+      const item = obj[i];
+      const sanitizedItem = sanitizeDeep(item, dangerousKeys, depth + 1);
+
+      // If a child was modified, we must clone the array if we haven't already
+      if (item !== sanitizedItem) {
+        if (!clonedArray) {
+          clonedArray = obj.slice();
+        }
+        clonedArray[i] = sanitizedItem;
+      }
+    }
+    return clonedArray ?? obj;
+  }
+
+  let clonedObj: Record<string, unknown> | null = null;
+  const keys = Object.keys(obj as Record<string, unknown>);
+
+  for (const key of keys) {
+    if (dangerousKeys.has(key)) {
+      if (!clonedObj) clonedObj = { ...(obj as Record<string, unknown>) };
+      delete clonedObj[key];
+      continue;
+    }
+
+    const value = (obj as Record<string, unknown>)[key];
+    const sanitizedValue = sanitizeDeep(value, dangerousKeys, depth + 1);
+
+    // If a child was modified, clone the object
+    if (value !== sanitizedValue) {
+      if (!clonedObj) clonedObj = { ...(obj as Record<string, unknown>) };
+      clonedObj[key] = sanitizedValue;
     }
   }
-  return clean;
+
+  return clonedObj ?? obj;
 }
