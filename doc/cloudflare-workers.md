@@ -143,6 +143,7 @@ Configure via Dashboard under **Settings** → **Variables and Secrets**:
 | Variable | Description | Example |
 |---|---|---|
 | `ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | `https://example.com,https://app.example.com` |
+| `ALLOWED_NAMESPACES` | Comma-separated list of exposed KV namespaces (if unset, all matching bindings are exposed) | `content,blog-posts` |
 
 ### CORS Behavior
 
