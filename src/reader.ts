@@ -122,6 +122,48 @@ export function isPrivateHostname(hostname: string): boolean {
 // ---------------------------------------------------------------------------
 
 /**
+ * Validates that a file path resolves within the allowed base directory.
+ * Prevents path traversal vulnerabilities.
+ */
+async function validatePath(path: string | URL, baseDir?: string): Promise<void> {
+  if (!baseDir) return;
+
+  const { resolve, sep } = await import("node:path");
+
+  let filePath: string;
+  if (typeof path === "string") {
+    // If it's a file:// URL string, convert it to a path
+    if (path.startsWith("file://")) {
+      const { fileURLToPath } = await import("node:url");
+      filePath = fileURLToPath(path);
+    } else {
+      filePath = path;
+    }
+  } else {
+    // It's a URL object
+    if (path.protocol === "file:") {
+      const { fileURLToPath } = await import("node:url");
+      filePath = fileURLToPath(path);
+    } else {
+      // Non-file URLs (e.g. HTTP) are handled separately in readFileContent
+      return;
+    }
+  }
+
+  const resolvedBase = resolve(baseDir);
+  const resolvedPath = resolve(filePath);
+
+  // Ensure basePrefix always ends with a separator, avoiding double slashes if resolvedBase is root
+  const basePrefix = resolvedBase.endsWith(sep) ? resolvedBase : resolvedBase + sep;
+
+  // Check if the resolved path starts with the base directory + separator
+  // or exactly equals the base directory
+  if (!resolvedPath.startsWith(basePrefix) && resolvedPath !== resolvedBase) {
+    throw new Error(`Path traversal blocked: ${String(path)} is outside base directory ${baseDir}`);
+  }
+}
+
+/**
  * Read content from a file path or URL.
  *
  * Supports:
@@ -134,7 +176,7 @@ export function isPrivateHostname(hostname: string): boolean {
  */
 export async function readFileContent(
   path: string | URL,
-  options?: { allowRemoteUrls?: boolean },
+  options?: { allowRemoteUrls?: boolean; baseDir?: string },
 ): Promise<string> {
   // 1. Fetch (HTTP/HTTPS) - prioritize for all runtimes
   if (
@@ -148,6 +190,9 @@ export async function readFileContent(
     }
     return fetchContent(path);
   }
+
+  // Validate local file path against baseDir (if provided)
+  await validatePath(path, options?.baseDir);
 
   // 2. Bun (Local Files & file: URLs)
   if (typeof Bun !== "undefined") {

@@ -208,6 +208,18 @@ export interface ParseOptions {
    * @default false
    */
   excerpt?: boolean | ExcerptOptions;
+
+  /**
+   * Allow reading from remote URLs when using `readFrontMatter`.
+   * @default false
+   */
+  allowRemoteUrls?: boolean;
+
+  /**
+   * Base directory to restrict local file reads to when using `readFrontMatter`.
+   * Prevents path traversal vulnerabilities.
+   */
+  baseDir?: string;
 }
 
 /**
@@ -513,7 +525,7 @@ export async function readFrontMatter<T = Record<string, unknown>>(
   path: string | URL,
   options?: ParseOptions,
 ): Promise<ParseResult<T>> {
-  const content = await readFileContent(path);
+  const content = await readFileContent(path, options);
   return parseFrontMatter<T>(content, options);
 }
 
