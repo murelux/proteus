@@ -80,10 +80,38 @@ export function isPrivateHostname(hostname: string): boolean {
   if (/^fc/i.test(lower) || /^fd/i.test(lower)) return true;
   if (/^fe[89ab]/i.test(lower)) return true;
 
-  // IPv4-mapped IPv6: ::ffff:A.B.C.D
-  const v4Mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (v4Mapped) {
-    return isPrivateHostname(v4Mapped[1]);
+  // IPv4-mapped IPv6: ::ffff:A.B.C.D or ::ffff:hex
+  if (lower.startsWith("::ffff:")) {
+    const remainder = lower.slice(7);
+
+    // Case 1: Dot-decimal notation (::ffff:127.0.0.1)
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(remainder)) {
+      return isPrivateHostname(remainder);
+    }
+
+    // Case 2: Hex notation (::ffff:7f00:1)
+    // Convert hex parts to IPv4 string
+    // e.g. "7f00:1" -> "127.0.0.1"
+    const hexParts = remainder.split(":");
+    if (hexParts.length <= 2) {
+      try {
+        let ipInt = 0;
+        for (const part of hexParts) {
+          if (!/^[0-9a-f]{1,4}$/.test(part)) return false; // Invalid hex
+          ipInt = (ipInt << 16) | Number.parseInt(part, 16);
+        }
+
+        // Convert 32-bit integer to dot-decimal string
+        // Use unsigned right shift to handle negative numbers from bitwise ops
+        const p1 = (ipInt >>> 24) & 255;
+        const p2 = (ipInt >>> 16) & 255;
+        const p3 = (ipInt >>> 8) & 255;
+        const p4 = ipInt & 255;
+        return isPrivateHostname(`${p1}.${p2}.${p3}.${p4}`);
+      } catch {
+        // Fall through to false if parsing fails
+      }
+    }
   }
 
   return false;
