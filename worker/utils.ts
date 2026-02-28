@@ -54,6 +54,14 @@ export function isValidNamespace(ns: string): boolean {
  * Returns `null` if the binding doesn't exist or isn't KV-like.
  */
 export function resolveKV(env: WorkerEnv, namespace: string): KVLike | null {
+  // If allowed namespaces are configured, check against the list.
+  if (env.ALLOWED_NAMESPACES) {
+    const allowed = env.ALLOWED_NAMESPACES.split(",").map((n) => n.trim());
+    if (!allowed.includes(namespace)) {
+      return null;
+    }
+  }
+
   const bindingName = `KV_${namespace.toUpperCase().replace(/-/g, "_")}`;
   const binding = (env as Record<string, unknown>)[bindingName];
   if (binding && typeof binding === "object" && "get" in binding) {
@@ -66,6 +74,8 @@ export function resolveKV(env: WorkerEnv, namespace: string): KVLike | null {
 export interface WorkerEnv {
   /** Comma-separated list of allowed origins. */
   ALLOWED_ORIGINS?: string;
+  /** Comma-separated list of allowed namespaces. If unset, all matching KV bindings are exposed. */
+  ALLOWED_NAMESPACES?: string;
   /**
    * KV namespace bindings are added dynamically via the Cloudflare Dashboard.
    * Convention: `KV_<NAMESPACE>` (e.g., `KV_CONTENT`, `KV_PAGES`).

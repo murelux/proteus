@@ -133,6 +133,31 @@ describe("Worker — KV namespace resolution", () => {
     const env: WorkerEnv = { KV_BROKEN: "not-an-object" };
     expect(resolveKV(env, "broken")).toBeNull();
   });
+
+  it("should resolve allowed namespace when allowlist is set", () => {
+    const env: WorkerEnv = {
+      KV_CONTENT: { get: async () => null },
+      ALLOWED_NAMESPACES: "content,pages",
+    };
+    expect(resolveKV(env, "content")).toBe(env.KV_CONTENT);
+  });
+
+  it("should return null for disallowed namespace when allowlist is set", () => {
+    const env: WorkerEnv = {
+      KV_SECRET: { get: async () => null },
+      ALLOWED_NAMESPACES: "content,pages",
+    };
+    // "secret" maps to KV_SECRET but is not in ALLOWED_NAMESPACES
+    expect(resolveKV(env, "secret")).toBeNull();
+  });
+
+  it("should handle spaces in allowlist", () => {
+    const env: WorkerEnv = {
+      KV_PAGES: { get: async () => null },
+      ALLOWED_NAMESPACES: "content, pages , blog",
+    };
+    expect(resolveKV(env, "pages")).toBe(env.KV_PAGES);
+  });
 });
 
 // ---------------------------------------------------------------------------
