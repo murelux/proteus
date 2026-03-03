@@ -78,6 +78,25 @@ describe("readFrontMatter", () => {
     expect(result.content).toContain("Just markdown");
   });
 
+  it("should enforce baseDir restriction for local files", async () => {
+    const baseDir = TEST_DIR;
+    // Reading inside baseDir should work
+    const result = await readFrontMatter<{ title: string }>(FILE_1, { baseDir });
+    expect(result.data.title).toBe("Test 1");
+
+    // Reading outside baseDir should fail
+    await expect(readFrontMatter("../../package.json", { baseDir })).rejects.toThrow(
+      "Path traversal detected",
+    );
+  });
+
+  it("should reject remote URLs unless allowRemoteUrls is true", async () => {
+    // Attempting to read a remote URL without allowRemoteUrls should throw immediately
+    await expect(readFrontMatter("https://example.com/file.md")).rejects.toThrow(
+      "Remote URL fetching is disabled by default for security",
+    );
+  });
+
   it("should isolate errors in readFrontMatterMany", async () => {
     const results = await readFrontMatterMany([FILE_1, "nonexistent.md", FILE_2]);
     expect(results).toHaveLength(3);

@@ -513,7 +513,7 @@ export async function readFrontMatter<T = Record<string, unknown>>(
   path: string | URL,
   options?: ParseOptions,
 ): Promise<ParseResult<T>> {
-  const content = await readFileContent(path);
+  const content = await readFileContent(path, options);
   return parseFrontMatter<T>(content, options);
 }
 
