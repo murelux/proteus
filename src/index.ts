@@ -208,6 +208,21 @@ export interface ParseOptions {
    * @default false
    */
   excerpt?: boolean | ExcerptOptions;
+
+  /**
+   * Allow reading from remote URLs (`http://`, `https://`).
+   * By default, this is disabled for security reasons to prevent SSRF.
+   *
+   * @default false
+   */
+  allowRemoteUrls?: boolean;
+
+  /**
+   * Base directory for local file reads. When provided, any local file path
+   * will be resolved against this directory, and **must** be contained within
+   * it. This prevents path traversal vulnerabilities (e.g. `../../etc/passwd`).
+   */
+  baseDir?: string | URL;
 }
 
 /**
