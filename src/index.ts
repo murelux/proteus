@@ -170,6 +170,17 @@ export function hasFrontMatter(
  */
 export interface ParseOptions {
   /**
+   * Optional base directory to restrict local file reads and prevent path traversal.
+   */
+  baseDir?: string | URL;
+
+  /**
+   * Whether to allow fetching remote URLs.
+   * @default false
+   */
+  allowRemoteUrls?: boolean;
+
+  /**
    * Optional Valibot schema to validate the parsed data against.
    * When provided, the returned `data` is typed & validated.
    *
@@ -513,7 +524,7 @@ export async function readFrontMatter<T = Record<string, unknown>>(
   path: string | URL,
   options?: ParseOptions,
 ): Promise<ParseResult<T>> {
-  const content = await readFileContent(path);
+  const content = await readFileContent(path, options);
   return parseFrontMatter<T>(content, options);
 }
 

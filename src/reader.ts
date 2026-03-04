@@ -134,7 +134,7 @@ export function isPrivateHostname(hostname: string): boolean {
  */
 export async function readFileContent(
   path: string | URL,
-  options?: { allowRemoteUrls?: boolean },
+  options?: { allowRemoteUrls?: boolean; baseDir?: string | URL },
 ): Promise<string> {
   // 1. Fetch (HTTP/HTTPS) - prioritize for all runtimes
   if (
@@ -147,6 +147,30 @@ export async function readFileContent(
       );
     }
     return fetchContent(path);
+  }
+
+  // Path Traversal Protection for local files
+  if (options?.baseDir) {
+    const { resolve, sep } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+
+    const getPathStr = (p: string | URL) =>
+      p instanceof URL ? (p.protocol === "file:" ? fileURLToPath(p) : p.href) : p;
+
+    const baseDirPath = getPathStr(options.baseDir);
+    const requestedPath = getPathStr(path);
+
+    const absoluteBase = resolve(baseDirPath);
+    // Resolve against absoluteBase so relative paths are treated as relative to baseDir
+    const absoluteRequested = resolve(absoluteBase, requestedPath);
+
+    // Ensure the resolved requested path is inside the absoluteBase
+    // Adding `sep` ensures it's strictly inside the directory (avoids /baseDir-foo matching /baseDir)
+    if (!absoluteRequested.startsWith(absoluteBase + sep) && absoluteRequested !== absoluteBase) {
+      throw new Error(`Path traversal detected: ${String(path)} is outside base directory`);
+    }
+
+    path = absoluteRequested;
   }
 
   // 2. Bun (Local Files & file: URLs)
