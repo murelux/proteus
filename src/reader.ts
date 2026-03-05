@@ -134,7 +134,7 @@ export function isPrivateHostname(hostname: string): boolean {
  */
 export async function readFileContent(
   path: string | URL,
-  options?: { allowRemoteUrls?: boolean },
+  options?: { allowRemoteUrls?: boolean; baseDir?: string },
 ): Promise<string> {
   // 1. Fetch (HTTP/HTTPS) - prioritize for all runtimes
   if (
@@ -147,6 +147,29 @@ export async function readFileContent(
       );
     }
     return fetchContent(path);
+  }
+
+  if (options?.baseDir) {
+    let filePathStr = "";
+    if (typeof path === "string") {
+      filePathStr = path;
+    } else if (path.protocol === "file:") {
+      const { fileURLToPath } = await import("node:url");
+      filePathStr = fileURLToPath(path);
+    }
+
+    if (filePathStr) {
+      const { resolve, relative, isAbsolute } = await import("node:path");
+      const resolvedBase = resolve(options.baseDir);
+      const resolvedPath = resolve(filePathStr);
+      const rel = relative(resolvedBase, resolvedPath);
+
+      if (rel.startsWith("..") || isAbsolute(rel)) {
+        throw new Error(
+          `Path traversal detected: ${String(path)} is outside base directory ${options.baseDir}`,
+        );
+      }
+    }
   }
 
   // 2. Bun (Local Files & file: URLs)

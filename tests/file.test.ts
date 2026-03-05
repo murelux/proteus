@@ -78,6 +78,23 @@ describe("readFrontMatter", () => {
     expect(result.content).toContain("Just markdown");
   });
 
+  it("should prevent path traversal when baseDir is configured", async () => {
+    // Try to read a file outside the base directory using string path
+    await expect(
+      readFrontMatter(join(TEST_DIR, "../package.json"), { baseDir: TEST_DIR }),
+    ).rejects.toThrow(/Path traversal detected/);
+
+    // Try to read a file outside the base directory using URL
+    const fileUrl = pathToFileURL(resolve(join(TEST_DIR, "../package.json")));
+    await expect(readFrontMatter(fileUrl, { baseDir: TEST_DIR })).rejects.toThrow(
+      /Path traversal detected/,
+    );
+
+    // Reading a file inside should still work
+    const result = await readFrontMatter(FILE_1, { baseDir: TEST_DIR });
+    expect(result.isEmpty).toBe(false);
+  });
+
   it("should isolate errors in readFrontMatterMany", async () => {
     const results = await readFrontMatterMany([FILE_1, "nonexistent.md", FILE_2]);
     expect(results).toHaveLength(3);
