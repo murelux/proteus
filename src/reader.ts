@@ -134,7 +134,7 @@ export function isPrivateHostname(hostname: string): boolean {
  */
 export async function readFileContent(
   path: string | URL,
-  options?: { allowRemoteUrls?: boolean },
+  options?: { allowRemoteUrls?: boolean; baseDir?: string | URL },
 ): Promise<string> {
   // 1. Fetch (HTTP/HTTPS) - prioritize for all runtimes
   if (
@@ -147,6 +147,39 @@ export async function readFileContent(
       );
     }
     return fetchContent(path);
+  }
+
+  // Enforce baseDir path traversal protection for local files
+  if (options?.baseDir) {
+    const { resolve, relative, isAbsolute } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+
+    let resolvedBaseDir: string;
+    if (typeof options.baseDir === "string") {
+      resolvedBaseDir = resolve(options.baseDir);
+    } else {
+      resolvedBaseDir = resolve(fileURLToPath(options.baseDir));
+    }
+
+    let resolvedPath: string;
+    if (typeof path === "string") {
+      resolvedPath = resolve(path);
+    } else if (path.protocol === "file:") {
+      resolvedPath = resolve(fileURLToPath(path));
+    } else {
+      resolvedPath = resolve(path.href);
+    }
+
+    const rel = relative(resolvedBaseDir, resolvedPath);
+    // If the path starts with '..' or is an absolute path (on Windows 'C:\' etc if different drive), it escaped the baseDir.
+    // If the relative path starts with '..' (or is just '..') or is an absolute path, it escaped the baseDir.
+    // Use sep to correctly identify directory boundaries (e.g. '../') rather than files that just start with '..' (e.g. '..hidden_file').
+    const { sep } = await import("node:path");
+    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+      throw new Error(
+        `Path traversal detected: ${String(path)} is outside base directory ${String(options.baseDir)}`,
+      );
+    }
   }
 
   // 2. Bun (Local Files & file: URLs)

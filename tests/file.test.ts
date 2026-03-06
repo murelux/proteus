@@ -100,4 +100,16 @@ describe("readFrontMatter", () => {
     const results = await readFrontMatterMany([]);
     expect(results).toEqual([]);
   });
+
+  it("should restrict file reading to baseDir", async () => {
+    const maliciousPath = resolve(join(TEST_DIR, "../../package.json"));
+    await expect(readFrontMatter(maliciousPath, { baseDir: TEST_DIR })).rejects.toThrow(
+      "Path traversal detected",
+    );
+  });
+
+  it("should allow file reading within baseDir", async () => {
+    const result = await readFrontMatter<{ title: string }>(FILE_1, { baseDir: TEST_DIR });
+    expect(result.data.title).toBe("Test 1");
+  });
 });
