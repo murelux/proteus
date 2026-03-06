@@ -46,10 +46,14 @@ import type { WasmParsers } from "./wasm-loader.js";
 import { getWasmParsers, getWasmParsersSync } from "./wasm-loader.js";
 
 // ---------------------------------------------------------------------------
-// Lazy-loaded validator (avoids requiring valibot at import time)
+// Lazy-loaded validator (avoids requiring any schema library at import time)
 // ---------------------------------------------------------------------------
 
-/** Valibot GenericSchema — declared locally to avoid requiring valibot at import time. */
+/**
+ * Minimal structural type for a Standard Schema (`~standard` protocol).
+ * Declared locally so that no schema library needs to be installed by default.
+ * Compatible with Zod v4, Valibot, ArkType, and any other Standard Schema impl.
+ */
 type AnySchema = { readonly "~standard": unknown };
 
 let _validateFn: ((data: unknown, schema: AnySchema) => unknown) | null = null;
@@ -63,13 +67,17 @@ async function lazyValidate<T>(data: unknown, schema: AnySchema): Promise<T> {
     throw new FrontMatterError("Failed to initialize validator");
   }
   const fn = _validateFn;
+  // fn may return T or Promise<T> depending on the schema — async functions
+  // automatically unwrap a returned Promise so this resolves correctly.
   return fn(data, schema) as T;
 }
 
 /**
- * Pre-load the Valibot schema validation module.
+ * Pre-load the schema validation module.
  *
- * Required before using `parseFrontMatterSync` if a schema is provided.
+ * This is required before using `parseFrontMatterSync` when a `schema` option
+ * is provided. The validator supports any **Standard Schema**-compliant
+ * library (Zod v4+, Valibot, ArkType, etc.).
  *
  * @example
  * ```ts
@@ -93,7 +101,21 @@ function lazyValidateSync<T>(data: unknown, schema: AnySchema): T {
         "Call `await initValidator()` first before attempting synchronous parsing with a schema.",
     );
   }
-  return _validateFn(data, schema) as T;
+  const result = _validateFn(data, schema);
+  // Standard Schema's validate() can be async; reject early with a helpful
+  // message rather than silently wrapping a Promise as the data value.
+  if (
+    result !== null &&
+    typeof result === "object" &&
+    "then" in (result as Record<string, unknown>) &&
+    typeof (result as { then?: unknown }).then === "function"
+  ) {
+    throw new FrontMatterError(
+      "Schema validation in sync mode returned a Promise. " +
+        "Use `parseFrontMatter()` (async) when your schema's validate() is asynchronous.",
+    );
+  }
+  return result as T;
 }
 
 // ---------------------------------------------------------------------------
@@ -170,11 +192,26 @@ export function hasFrontMatter(
  */
 export interface ParseOptions {
   /**
-   * Optional Valibot schema to validate the parsed data against.
-   * When provided, the returned `data` is typed & validated.
+   * Optional **Standard Schema**-compliant schema to validate the parsed data
+   * against. Compatible with Zod v4+, Valibot, ArkType, and any library that
+   * implements the `~standard` interface.
    *
-   * Note: without a schema, the generic `T` is unchecked at runtime —
-   * the caller is responsible for ensuring the cast is sound.
+   * When provided, the returned `data` is typed and validated at runtime.
+   * Without a schema, the generic `T` is unchecked — the caller is responsible
+   * for ensuring the cast is sound.
+   *
+   * @example
+   * ```ts
+   * // Zod
+   * import { z } from "zod";
+   * const schema = z.object({ title: z.string() });
+   * const result = await parseFrontMatter(src, { schema });
+   *
+   * // Valibot
+   * import * as v from "valibot";
+   * const schema = v.object({ title: v.string() });
+   * const result = await parseFrontMatter(src, { schema });
+   * ```
    */
   schema?: AnySchema;
 
@@ -208,6 +245,20 @@ export interface ParseOptions {
    * @default false
    */
   excerpt?: boolean | ExcerptOptions;
+
+  /**
+   * Allow `readFrontMatter` / `readFrontMatterMany` to fetch content from
+   * remote HTTP/HTTPS URLs.
+   *
+   * Remote URL fetching is **disabled by default** to prevent accidental SSRF
+   * in server-side environments. Set this to `true` only when you explicitly
+   * need to read from trusted remote sources.
+   *
+   * Has no effect when the `path` argument is a local file path.
+   *
+   * @default false
+   */
+  allowRemoteUrls?: boolean;
 }
 
 /**
@@ -490,8 +541,8 @@ export {
 } from "./types.js";
 export { initWasm } from "./wasm-loader.js";
 
-// Note: `validate` is NOT re-exported here to avoid pulling in the valibot
-// dependency at import time.  Use the subpath import instead:
+// Note: `validate` is NOT re-exported here to avoid pulling in any schema
+// library dependency at import time.  Use the subpath import instead:
 //   import { validate } from "@quill/proteus/validator"
 
 // ---------------------------------------------------------------------------
@@ -504,8 +555,11 @@ export { initWasm } from "./wasm-loader.js";
  * Automatically detects the runtime (Bun, Deno) or falls back to `fetch`
  * for URL inputs in other environments (Cloudflare Workers, Browsers).
  *
+ * Remote HTTP/HTTPS URLs are blocked by default — pass
+ * `options.allowRemoteUrls: true` to enable them.
+ *
  * @param path - File path (string) or URL to read.
- * @param options - Parse options (format, delimiters, schema, etc).
+ * @param options - Parse options (format, delimiters, schema, allowRemoteUrls, etc.).
  * @returns The parsed front matter result.
  * @throws {Error} If the file cannot be read or runtime is unsupported.
  */
@@ -513,7 +567,9 @@ export async function readFrontMatter<T = Record<string, unknown>>(
   path: string | URL,
   options?: ParseOptions,
 ): Promise<ParseResult<T>> {
-  const content = await readFileContent(path);
+  const content = await readFileContent(path, {
+    allowRemoteUrls: options?.allowRemoteUrls ?? false,
+  });
   return parseFrontMatter<T>(content, options);
 }
 
@@ -525,6 +581,9 @@ export async function readFrontMatter<T = Record<string, unknown>>(
  *
  * Individual file errors are caught and returned as `ParseResultError`
  * entries so that one failing file does not reject the entire batch.
+ *
+ * Remote HTTP/HTTPS URLs are blocked by default — pass
+ * `options.allowRemoteUrls: true` to enable them.
  *
  * @param paths - Array of file paths or URLs.
  * @param options - Parse options (shared across all files).
