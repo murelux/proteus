@@ -121,6 +121,46 @@ export function isPrivateHostname(hostname: string): boolean {
 // File Content Reading
 // ---------------------------------------------------------------------------
 
+// Cache path/url imports
+let pathModule: typeof import("node:path") | undefined;
+let urlModule: typeof import("node:url") | undefined;
+
+/**
+ * Validates that a local file path falls within the allowed base directory.
+ * Prevents Path Traversal/LFI vulnerabilities.
+ */
+async function validateLocalFilePath(target: string | URL, baseDir: string): Promise<void> {
+  if (!pathModule) pathModule = await import("node:path");
+
+  let targetPath: string;
+  if (target instanceof URL) {
+    if (target.protocol !== "file:") {
+      throw new Error(`Invalid local URL protocol: ${target.protocol}`);
+    }
+    if (!urlModule) urlModule = await import("node:url");
+    targetPath = urlModule.fileURLToPath(target);
+  } else if (target.startsWith("file:")) {
+    if (!urlModule) urlModule = await import("node:url");
+    targetPath = urlModule.fileURLToPath(new URL(target));
+  } else {
+    targetPath = target;
+  }
+
+  const resolvedBase = pathModule.resolve(baseDir);
+  const resolvedTarget = pathModule.resolve(targetPath);
+
+  // The resolved target must start with the resolved base directory + path separator
+  // to ensure it's truly a child and not just a prefix-matching folder
+  // (e.g. base="/var/foo" shouldn't allow access to "/var/foo-bar")
+  const requiredPrefix = resolvedBase.endsWith(pathModule.sep)
+    ? resolvedBase
+    : resolvedBase + pathModule.sep;
+
+  if (!resolvedTarget.startsWith(requiredPrefix) && resolvedTarget !== resolvedBase) {
+    throw new Error(`Path traversal detected: Access to ${target} is denied outside baseDir`);
+  }
+}
+
 /**
  * Read content from a file path or URL.
  *
@@ -134,7 +174,7 @@ export function isPrivateHostname(hostname: string): boolean {
  */
 export async function readFileContent(
   path: string | URL,
-  options?: { allowRemoteUrls?: boolean },
+  options?: { allowRemoteUrls?: boolean; baseDir?: string },
 ): Promise<string> {
   // 1. Fetch (HTTP/HTTPS) - prioritize for all runtimes
   if (
@@ -147,6 +187,11 @@ export async function readFileContent(
       );
     }
     return fetchContent(path);
+  }
+
+  // Ensure path traversal validation runs for local files
+  if (options?.baseDir) {
+    await validateLocalFilePath(path, options.baseDir);
   }
 
   // 2. Bun (Local Files & file: URLs)

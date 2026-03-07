@@ -259,6 +259,16 @@ export interface ParseOptions {
    * @default false
    */
   allowRemoteUrls?: boolean;
+
+  /**
+   * Restrict local file reads to a specific base directory to prevent
+   * path traversal vulnerabilities.
+   *
+   * When provided, `readFrontMatter` will verify that the resolved
+   * target path is contained within this `baseDir`. Reads outside
+   * this directory will throw an error.
+   */
+  baseDir?: string;
 }
 
 /**
@@ -569,6 +579,7 @@ export async function readFrontMatter<T = Record<string, unknown>>(
 ): Promise<ParseResult<T>> {
   const content = await readFileContent(path, {
     allowRemoteUrls: options?.allowRemoteUrls ?? false,
+    baseDir: options?.baseDir,
   });
   return parseFrontMatter<T>(content, options);
 }

@@ -100,4 +100,48 @@ describe("readFrontMatter", () => {
     const results = await readFrontMatterMany([]);
     expect(results).toEqual([]);
   });
+
+  describe("Security: Local File Path Traversal (baseDir)", () => {
+    it("should allow reading a file within the baseDir", async () => {
+      const result = await readFrontMatter<{ title: string }>(FILE_1, { baseDir: TEST_DIR });
+      expect(result.data.title).toBe("Test 1");
+    });
+
+    it("should block reading a file outside the baseDir via relative paths", async () => {
+      const outsidePath = join(TEST_DIR, "..", "..", "package.json");
+      await expect(readFrontMatter(outsidePath, { baseDir: TEST_DIR })).rejects.toThrowError(
+        /Path traversal detected/,
+      );
+    });
+
+    it("should block reading a file outside the baseDir via absolute paths", async () => {
+      const absoluteOutsidePath = resolve(join(TEST_DIR, "..", "..", "package.json"));
+      await expect(
+        readFrontMatter(absoluteOutsidePath, { baseDir: TEST_DIR }),
+      ).rejects.toThrowError(/Path traversal detected/);
+    });
+
+    it("should block reading a file outside the baseDir via file: URLs", async () => {
+      const fileUrl = pathToFileURL(resolve(join(TEST_DIR, "..", "..", "package.json")));
+      await expect(readFrontMatter(fileUrl, { baseDir: TEST_DIR })).rejects.toThrowError(
+        /Path traversal detected/,
+      );
+    });
+
+    it("should reject prefix-matching directories that are not true children", async () => {
+      // Create a sibling directory that shares the prefix of TEST_DIR
+      const siblingDir = `${TEST_DIR}-sibling`;
+      const siblingFile = join(siblingDir, "sibling.md");
+      await mkdir(siblingDir, { recursive: true });
+      await writeFile(siblingFile, "---\ntitle: Sibling\n---\nBody");
+
+      try {
+        await expect(readFrontMatter(siblingFile, { baseDir: TEST_DIR })).rejects.toThrowError(
+          /Path traversal detected/,
+        );
+      } finally {
+        await rm(siblingDir, { recursive: true, force: true });
+      }
+    });
+  });
 });
