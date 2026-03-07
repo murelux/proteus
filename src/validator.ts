@@ -105,7 +105,7 @@ function throwValidationError(issues: ReadonlyArray<StandardIssue>): never {
  * @throws {ValidationError} if `schema` does not implement Standard Schema.
  */
 export function validate<T>(data: unknown, schema: StandardSchema<T>): T | Promise<T> {
-  const std = (schema as Record<string, unknown>)["~standard"] as
+  const std = (schema as Record<string | number | symbol, unknown>)["~standard"] as
     | { validate?: (v: unknown) => unknown }
     | undefined;
 
