@@ -1,5 +1,5 @@
+import { type ParseOptions, parseFrontMatter } from "@quill/proteus";
 import type { Plugin } from "vite";
-import { parseFrontMatter, type ParseOptions, type ParseResult } from "@quill/proteus";
 
 interface ProteusPluginOptions extends ParseOptions {
   /**
@@ -45,33 +45,41 @@ export function proteusPlugin(options: ProteusPluginOptions = {}): Plugin {
     name: "vite-plugin-proteus",
     async transform(code: string, id: string) {
       const cleanId = id.split("?")[0];
-      const isIncluded = Array.isArray(include)
-        ? include.some((pattern) =>
-            pattern instanceof RegExp
-              ? pattern.test(cleanId)
-              : cleanId.endsWith(String(pattern))
-          )
-        : include instanceof RegExp
-          ? include.test(cleanId)
-          : cleanId.endsWith(include);
+
+      // Refactor nested ternary (SonarQube S3358)
+      let isIncluded = false;
+      if (Array.isArray(include)) {
+        isIncluded = include.some((p) =>
+          p instanceof RegExp ? p.test(cleanId) : cleanId.endsWith(String(p)),
+        );
+      } else if (include instanceof RegExp) {
+        isIncluded = include.test(cleanId);
+      } else {
+        isIncluded = cleanId.endsWith(include);
+      }
 
       if (!isIncluded) {
         return null;
       }
 
-      const result: ParseResult<unknown> = await parseFrontMatter(code, parseOptions);
+      const result = await parseFrontMatter(code, parseOptions);
 
-      // `ast` and `toc` come from ParseResultSuccess; guard against empty/error variants
-      const ast = !result.isEmpty && !result.error ? (result as any).ast ?? null : null;
-      const toc = !result.isEmpty && !result.error ? (result as any).toc ?? null : null;
+      // Extract optional fields safely. They are present in all ParseResult variants.
+      let ast = null;
+      let toc = null;
+      let excerpt = null;
+
+      if (!result.isEmpty && !result.error) {
+        ast = result.ast ?? null;
+        toc = result.toc ?? null;
+        excerpt = result.excerpt ?? null;
+      }
 
       return {
         code: [
           `export const data = ${JSON.stringify(result.data ?? {})};`,
           `export const content = ${JSON.stringify(result.content ?? "")};`,
-          `export const excerpt = ${JSON.stringify(
-            !result.isEmpty && !result.error ? (result as any).excerpt ?? null : null
-          )};`,
+          `export const excerpt = ${JSON.stringify(excerpt)};`,
           `export const format = ${JSON.stringify(result.format ?? null)};`,
           `export const isEmpty = ${JSON.stringify(result.isEmpty ?? false)};`,
           `export const ast = ${JSON.stringify(ast)};`,

@@ -10,6 +10,7 @@
     "build:wasm": "bun run --filter @quill/proteus build:wasm",
     "test": "bun run --filter \"*\" test",
     "lint": "biome check .",
+    "fix": "biome check --write .",
     "format": "biome format --write .",
     "clean": "rimraf node_modules packages/*/node_modules packages/*/dist"
   },
