@@ -7,24 +7,34 @@ describe("SSRF Protection - IPv6 Bypass", () => {
   };
 
   it("should block standard IPv4 private addresses", () => {
-    ["127.0.0.1", "10.0.0.5", "192.168.1.1"].forEach(h => check(h, true));
+    for (const h of ["127.0.0.1", "10.0.0.5", "192.168.1.1"]) {
+      check(h, true);
+    }
   });
 
   it("should block standard IPv6 private addresses", () => {
-    ["::1", "[::1]", "fc00::1"].forEach(h => check(h, true));
+    for (const h of ["::1", "[::1]", "fc00::1"]) {
+      check(h, true);
+    }
   });
 
   it("should block standard IPv4-mapped IPv6 addresses", () => {
-    ["::ffff:127.0.0.1", "[::ffff:127.0.0.1]"].forEach(h => check(h, true));
+    for (const h of ["::ffff:127.0.0.1", "[::ffff:127.0.0.1]"]) {
+      check(h, true);
+    }
   });
 
   it("should block hex-encoded IPv4-mapped IPv6 addresses", () => {
     // 127.0.0.1 = 7f 00 00 01 -> ::ffff:7f00:1
     // 192.168.1.1 = c0 a8 01 01 -> ::ffff:c0a8:101
-    ["::ffff:7f00:1", "[::ffff:7f00:1]", "::ffff:c0a8:101"].forEach(h => check(h, true));
+    for (const h of ["::ffff:7f00:1", "[::ffff:7f00:1]", "::ffff:c0a8:101"]) {
+      check(h, true);
+    }
   });
 
   it("should allow public addresses", () => {
-    ["8.8.8.8", "google.com"].forEach(h => check(h, false));
+    for (const h of ["8.8.8.8", "google.com"]) {
+      check(h, false);
+    }
   });
 });

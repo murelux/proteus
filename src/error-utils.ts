@@ -26,7 +26,10 @@ export function sanitizeErrorMessage(message: string): string {
   sanitized = sanitized.replaceAll(/\\\\[^\s:*?"<>|]+/g, "<path>");
   sanitized = sanitized.replaceAll(/\.{1,2}[/\\](?:[^\s:*?"<>|]| (?=[^\s]))+/g, "<path>");
   sanitized = sanitized.replaceAll(/\n\s+at\s+.+/g, "");
-  sanitized = sanitized.replaceAll(/thread\s+'[^']*'\s+panicked\s+at\s+[^\n]*/g, "<internal error>");
+  sanitized = sanitized.replaceAll(
+    /thread\s+'[^']*'\s+panicked\s+at\s+[^\n]*/g,
+    "<internal error>",
+  );
   // Truncate to prevent excessive error detail exposure
   if (sanitized.length > 300) {
     sanitized = `${sanitized.slice(0, 300)}…`;

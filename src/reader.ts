@@ -46,7 +46,12 @@ function isIPv4Private(lower: string): boolean {
 
 function isIPv6Private(lower: string): boolean {
   // Loopback, Unspecified, mDNS
-  if (lower === "::1" || lower === "::" || lower === "0:0:0:0:0:0:0:0" || lower.endsWith(".local")) {
+  if (
+    lower === "::1" ||
+    lower === "::" ||
+    lower === "0:0:0:0:0:0:0:0" ||
+    lower.endsWith(".local")
+  ) {
     return true;
   }
   // ULA (fc00::/7) and link-local (fe80::/10)
@@ -180,7 +185,10 @@ async function handleRedirects(
       if (redirectCount > MAX_REDIRECTS) {
         throw new RangeError(`Too many redirects (max ${MAX_REDIRECTS})`);
       }
-      const location = res.headers.get("location")!;
+      const location = res.headers.get("location");
+      if (location === null) {
+        throw new TypeError("Missing location header in redirect response");
+      }
       url = new URL(location, url);
       if (res.body) await res.text().catch(() => {});
       continue;

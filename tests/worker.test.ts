@@ -37,15 +37,21 @@ describe("Worker — slug validation", () => {
   };
 
   it("should accept simple alphanumeric slugs", () => {
-    ["hello-world", "post123", "my_post"].forEach(s => check(s, true));
+    for (const s of ["hello-world", "post123", "my_post"]) {
+      check(s, true);
+    }
   });
 
   it("should accept slugs with path separators", () => {
-    ["blog/2026/my-post", "a/b/c"].forEach(s => check(s, true));
+    for (const s of ["blog/2026/my-post", "a/b/c"]) {
+      check(s, true);
+    }
   });
 
   it("should accept slugs with dots", () => {
-    ["file.md", "v1.0.0"].forEach(s => check(s, true));
+    for (const s of ["file.md", "v1.0.0"]) {
+      check(s, true);
+    }
   });
 
   it("should reject empty slugs", () => {
@@ -53,11 +59,15 @@ describe("Worker — slug validation", () => {
   });
 
   it("should reject slugs starting with non-alphanumeric chars", () => {
-    ["-leading-dash", "_leading-underscore", ".hidden", "/absolute"].forEach(s => check(s, false));
+    for (const s of ["-leading-dash", "_leading-underscore", ".hidden", "/absolute"]) {
+      check(s, false);
+    }
   });
 
   it("should reject slugs with special characters", () => {
-    ["hello world", "path/../traversal", "slug<script>", "slug:colon"].forEach(s => check(s, false));
+    for (const s of ["hello world", "path/../traversal", "slug<script>", "slug:colon"]) {
+      check(s, false);
+    }
   });
 
   it("should reject slugs exceeding max length", () => {
@@ -84,11 +94,15 @@ describe("Worker — namespace validation", () => {
   };
 
   it("should accept valid namespace names", () => {
-    ["content", "blog-posts", "a", "pages", "my-kv-store"].forEach(n => check(n, true));
+    for (const n of ["content", "blog-posts", "a", "pages", "my-kv-store"]) {
+      check(n, true);
+    }
   });
 
   it("should reject invalid namespace names", () => {
-    ["", "UPPER", "-leading", "trailing-", "has space", "has.dot", "has/slash"].forEach(n => check(n, false));
+    for (const n of ["", "UPPER", "-leading", "trailing-", "has space", "has.dot", "has/slash"]) {
+      check(n, false);
+    }
   });
 
   it("should reject namespaces exceeding max length", () => {
@@ -174,11 +188,16 @@ describe("Worker — error sanitization (shared)", () => {
   });
 
   it("should strip Rust panic details", () => {
-    check("thread 'main' panicked at src/lib.rs:42: assertion failed", "panicked", "<internal error>");
+    check(
+      "thread 'main' panicked at src/lib.rs:42: assertion failed",
+      "panicked",
+      "<internal error>",
+    );
   });
 
   it("should strip stack trace lines", () => {
-    const msg = "Error occurred\n    at Object.parse (/path/to/file.js:10:5)\n    at Module._compile";
+    const msg =
+      "Error occurred\n    at Object.parse (/path/to/file.js:10:5)\n    at Module._compile";
     const result = sanitizeErrorMessage(msg);
     expect(result).not.toContain("at Object.parse");
     expect(result).not.toContain("at Module._compile");
@@ -201,63 +220,111 @@ describe("Worker — error sanitization (shared)", () => {
 // ---------------------------------------------------------------------------
 
 const TEST_ALLOWED_ORIGINS = "https://example.com,https://app.example.com";
-const mockKV: KVLike = { async get() { return null; } };
+const mockKV: KVLike = {
+  async get() {
+    return null;
+  },
+};
 const testEnv: WorkerEnv = { KV_CONTENT: mockKV, ALLOWED_ORIGINS: TEST_ALLOWED_ORIGINS };
 
 async function handlePost(request: Request, cors: Record<string, string>): Promise<Response> {
   try {
     const contentLength = request.headers.get("content-length");
     if (contentLength && Number.parseInt(contentLength, 10) > MAX_BODY_SIZE) {
-      return Response.json({ error: `Request body too large (max: ${MAX_BODY_SIZE} bytes)` }, { status: 413, headers: { ...cors, ...securityHeaders } });
+      return Response.json(
+        { error: `Request body too large (max: ${MAX_BODY_SIZE} bytes)` },
+        { status: 413, headers: { ...cors, ...securityHeaders } },
+      );
     }
 
     const markdown = await request.text();
     const byteLength = new TextEncoder().encode(markdown).byteLength;
     if (byteLength > MAX_BODY_SIZE) {
-      return Response.json({ error: `Request body too large (max: ${MAX_BODY_SIZE} bytes)` }, { status: 413, headers: { ...cors, ...securityHeaders } });
+      return Response.json(
+        { error: `Request body too large (max: ${MAX_BODY_SIZE} bytes)` },
+        { status: 413, headers: { ...cors, ...securityHeaders } },
+      );
     }
 
     const result = await parseFrontMatter(markdown);
     return Response.json(result, { headers: { ...cors, ...securityHeaders } });
   } catch (err) {
     const message = sanitizeErrorMessage(err instanceof Error ? err.message : String(err));
-    return Response.json({ error: message }, { status: 400, headers: { ...cors, ...securityHeaders } });
+    return Response.json(
+      { error: message },
+      { status: 400, headers: { ...cors, ...securityHeaders } },
+    );
   }
 }
 
 async function handleGet(url: URL, cors: Record<string, string>): Promise<Response> {
   let segments: string[];
-  try { segments = url.pathname.slice(1).split("/").map(decodeURIComponent); }
-  catch { return Response.json({ error: "Invalid URL encoding" }, { status: 400, headers: { ...cors, ...securityHeaders } }); }
+  try {
+    segments = url.pathname.slice(1).split("/").map(decodeURIComponent);
+  } catch {
+    return Response.json(
+      { error: "Invalid URL encoding" },
+      { status: 400, headers: { ...cors, ...securityHeaders } },
+    );
+  }
 
   if (segments.length === 1 && segments[0] === "") {
-    return Response.json({ error: "Missing namespace and slug. Usage: GET /:namespace/:slug" }, { status: 400, headers: { ...cors, ...securityHeaders } });
+    return Response.json(
+      { error: "Missing namespace and slug. Usage: GET /:namespace/:slug" },
+      { status: 400, headers: { ...cors, ...securityHeaders } },
+    );
   }
 
   const namespace = segments[0];
-  if (!isValidNamespace(namespace)) return Response.json({ error: "Invalid namespace format" }, { status: 400, headers: { ...cors, ...securityHeaders } });
+  if (!isValidNamespace(namespace))
+    return Response.json(
+      { error: "Invalid namespace format" },
+      { status: 400, headers: { ...cors, ...securityHeaders } },
+    );
 
   const kv = resolveKV(testEnv, namespace);
-  if (!kv) return Response.json({ error: `Unknown namespace: ${namespace}` }, { status: 404, headers: { ...cors, ...securityHeaders } });
+  if (!kv)
+    return Response.json(
+      { error: `Unknown namespace: ${namespace}` },
+      { status: 404, headers: { ...cors, ...securityHeaders } },
+    );
 
   const isBySlug = segments.length >= 3 && segments[1] === "by-slug";
   const slug = segments.slice(isBySlug ? 2 : 1).join("/");
 
-  if (!slug || !isValidSlug(slug)) return Response.json({ error: "Invalid slug format" }, { status: 400, headers: { ...cors, ...securityHeaders } });
-  if (segments.length < (isBySlug ? 3 : 2)) return Response.json({ error: "Missing slug. Usage: GET /:namespace/:slug" }, { status: 400, headers: { ...cors, ...securityHeaders } });
+  if (!slug || !isValidSlug(slug))
+    return Response.json(
+      { error: "Invalid slug format" },
+      { status: 400, headers: { ...cors, ...securityHeaders } },
+    );
+  if (segments.length < (isBySlug ? 3 : 2))
+    return Response.json(
+      { error: "Missing slug. Usage: GET /:namespace/:slug" },
+      { status: 400, headers: { ...cors, ...securityHeaders } },
+    );
 
-  return Response.json({ error: "Not found" }, { status: 404, headers: { ...cors, ...securityHeaders } });
+  return Response.json(
+    { error: "Not found" },
+    { status: 404, headers: { ...cors, ...securityHeaders } },
+  );
 }
 
 async function simulatedFetch(request: Request): Promise<Response> {
   const url = new URL(request.url);
-  const cors = corsHeaders(request.headers.get("origin"), testEnv.ALLOWED_ORIGINS as string | undefined);
+  const cors = corsHeaders(
+    request.headers.get("origin"),
+    testEnv.ALLOWED_ORIGINS as string | undefined,
+  );
 
-  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...cors } });
+  if (request.method === "OPTIONS")
+    return new Response(null, { status: 204, headers: { ...cors } });
   if (request.method === "POST") return handlePost(request, cors);
   if (request.method === "GET") return handleGet(url, cors);
 
-  return Response.json({ error: "Method not allowed" }, { status: 405, headers: { ...cors, ...securityHeaders } });
+  return Response.json(
+    { error: "Method not allowed" },
+    { status: 405, headers: { ...cors, ...securityHeaders } },
+  );
 }
 
 describe("Worker — route logic (simulated fetch handler)", () => {

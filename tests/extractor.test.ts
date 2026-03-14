@@ -27,7 +27,11 @@ describe("extractFrontMatter", () => {
     });
 
     it("should return body content after the delimiter", () => {
-      check("---\ntitle: Test\n---\n# Hello\n\nParagraph here.", "title: Test", "# Hello\n\nParagraph here.");
+      check(
+        "---\ntitle: Test\n---\n# Hello\n\nParagraph here.",
+        "title: Test",
+        "# Hello\n\nParagraph here.",
+      );
     });
   });
 
@@ -56,7 +60,9 @@ describe("extractFrontMatter", () => {
     });
 
     it("should throw for unclosed delimiter", () => {
-      expect(() => extractFrontMatter("---\ntitle: Hello\n")).toThrow(/Unclosed front matter block/);
+      expect(() => extractFrontMatter("---\ntitle: Hello\n")).toThrow(
+        /Unclosed front matter block/,
+      );
     });
 
     it("should handle empty front matter block", () => {
@@ -86,15 +92,21 @@ describe("extractFrontMatter", () => {
 
   describe("custom delimiters", () => {
     it("should support symmetric and asymmetric delimiters", () => {
-      const res1 = extractFrontMatter("~~~\ntitle: Hello\n~~~\n# Content", [{ open: "~~~", close: "~~~" }]);
+      const res1 = extractFrontMatter("~~~\ntitle: Hello\n~~~\n# Content", [
+        { open: "~~~", close: "~~~" },
+      ]);
       expect(res1?.rawData).toBe("title: Hello");
-      
-      const res2 = extractFrontMatter("<!--\ntitle: Hello\n-->\n# Content", [{ open: "<!--", close: "-->" }]);
+
+      const res2 = extractFrontMatter("<!--\ntitle: Hello\n-->\n# Content", [
+        { open: "<!--", close: "-->" },
+      ]);
       expect(res2?.rawData).toBe("title: Hello");
     });
 
     it("should return null when custom delimiters don't match", () => {
-      expect(extractFrontMatter("---\ntitle: Hello\n---\n# Content", [{ open: "~~~", close: "~~~" }])).toBeNull();
+      expect(
+        extractFrontMatter("---\ntitle: Hello\n---\n# Content", [{ open: "~~~", close: "~~~" }]),
+      ).toBeNull();
     });
 
     it("should try multiple custom delimiters in order", () => {

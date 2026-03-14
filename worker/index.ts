@@ -1,11 +1,10 @@
 // @ts-expect-error: no type declarations for generated _bg.js
 import * as bgModule from "../pkg/matter_wasm_bg.js";
-// @ts-expect-error: wrangler resolves .wasm imports as WebAssembly.Module
 import wasmBinary from "../pkg/matter_wasm_bg.wasm";
 import { sanitizeErrorMessage } from "../src/error-utils.js";
 import { parseFrontMatter } from "../src/index.js";
-import { _preloadWasmModule } from "../src/wasm-loader.js";
 import { readStreamToString } from "../src/stream-utils.js";
+import { _preloadWasmModule } from "../src/wasm-loader.js";
 import type { KVLike, WorkerEnv } from "./utils.js";
 import {
   corsHeaders,
@@ -24,9 +23,6 @@ import {
  * Cloudflare Dashboard and appear at runtime as properties on `env`.
  */
 type Env = WorkerEnv;
-
-/** Cached TextDecoder instance for the worker. */
-const textDecoder = new TextDecoder();
 
 /**
  * Eagerly initialise the WASM module using statically-imported artefacts
@@ -167,7 +163,6 @@ async function handlePost(request: Request, cors: Record<string, string>): Promi
 
     const result = await parseFrontMatter(markdown);
     return jsonSuccess(result, cors);
-
   } catch (err) {
     // Reuse the shared sanitization logic from the core library.
     const raw = err instanceof Error ? err.message : String(err);

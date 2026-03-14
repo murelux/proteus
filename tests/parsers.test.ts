@@ -118,7 +118,7 @@ describe("parsers (WASM)", () => {
     });
 
     it("should parse JSON with Unicode escape sequences", () => {
-      const result = jsonAdapter.parse('{"text": "Hello \\u4e16\\u754c"}') as Record<
+      const result = jsonAdapter.parse(String.raw`{"text": "Hello \u4e16\u754c"}`) as Record<
         string,
         unknown
       >;
@@ -127,7 +127,7 @@ describe("parsers (WASM)", () => {
 
     it("should parse JSON with special characters in strings", () => {
       const result = jsonAdapter.parse(
-        '{"quote": "He said \\"hello\\"", "newline": "line1\\nline2"}',
+        String.raw`{"quote": "He said \"hello\"", "newline": "line1\nline2"}`,
       ) as Record<string, unknown>;
       expect(result.quote).toContain("hello");
       expect(result.newline).toContain("line1");

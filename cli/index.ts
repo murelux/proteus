@@ -55,23 +55,45 @@ function handleLongOption(arg: string, values: ParsedArgs["values"]): void {
   const val = eqIdx === -1 ? undefined : arg.slice(eqIdx + 1);
 
   switch (key) {
-    case "format": values.format = val; break;
-    case "delimiter": values.delimiter = val; break;
-    case "help": values.help = true; break;
-    case "json": values.json = true; break;
-    case "pretty": values.pretty = true; break;
-    default: die(`unknown option: --${key}`);
+    case "format":
+      values.format = val;
+      break;
+    case "delimiter":
+      values.delimiter = val;
+      break;
+    case "help":
+      values.help = true;
+      break;
+    case "json":
+      values.json = true;
+      break;
+    case "pretty":
+      values.pretty = true;
+      break;
+    default:
+      die(`unknown option: --${key}`);
   }
 }
 
-function handleShortFlags(arg: string, i: number, args: string[], values: ParsedArgs["values"]): number {
+function handleShortFlags(
+  arg: string,
+  i: number,
+  args: string[],
+  values: ParsedArgs["values"],
+): number {
   const flags = arg.slice(1);
   for (let fi = 0; fi < flags.length; fi++) {
     const ch = flags[fi];
     switch (ch) {
-      case "h": values.help = true; break;
-      case "j": values.json = true; break;
-      case "p": values.pretty = true; break;
+      case "h":
+        values.help = true;
+        break;
+      case "j":
+        values.json = true;
+        break;
+      case "p":
+        values.pretty = true;
+        break;
       case "f":
       case "d": {
         const rest = flags.slice(fi + 1);
@@ -86,7 +108,8 @@ function handleShortFlags(arg: string, i: number, args: string[], values: Parsed
         else values.delimiter = val;
         return i;
       }
-      default: die(`unknown option: -${ch}`);
+      default:
+        die(`unknown option: -${ch}`);
     }
   }
   return i;

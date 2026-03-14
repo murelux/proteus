@@ -4,7 +4,7 @@ import { hasFrontMatter, parseFrontMatter } from "../src/index.js";
 import { ExtractionError, ParseError, ValidationError } from "../src/types.js";
 
 describe("parseFrontMatter — integration", () => {
-  const check = async (source: string, format: string, data: any, contentPart?: string) => {
+  const check = async (source: string, format: string, data: unknown, contentPart?: string) => {
     const result = await parseFrontMatter(source);
     expect(result.format).toBe(format);
     expect(result.isEmpty).toBe(false);
@@ -29,12 +29,17 @@ draft: false
 
 This is the content of my blog post.`;
 
-      await check(source, "yaml", {
-        title: "My Blog Post",
-        date: "2026-01-15",
-        tags: ["typescript", "rust"],
-        draft: false,
-      }, "# My Blog Post");
+      await check(
+        source,
+        "yaml",
+        {
+          title: "My Blog Post",
+          date: "2026-01-15",
+          tags: ["typescript", "rust"],
+          draft: false,
+        },
+        "# My Blog Post",
+      );
     });
   });
 
@@ -54,11 +59,16 @@ This is the content of my blog post.`;
 
 Content goes here.`;
 
-      await check(source, "json", {
-        title: "JSON Post",
-        count: 42,
-        published: true,
-      }, "# JSON Post");
+      await check(
+        source,
+        "json",
+        {
+          title: "JSON Post",
+          count: 42,
+          published: true,
+        },
+        "# JSON Post",
+      );
     });
   });
 
@@ -76,11 +86,16 @@ published = true
 
 Content goes here.`;
 
-      await check(source, "toml", {
-        title: "TOML Post",
-        count: 42,
-        published: true,
-      }, "# TOML Post");
+      await check(
+        source,
+        "toml",
+        {
+          title: "TOML Post",
+          count: 42,
+          published: true,
+        },
+        "# TOML Post",
+      );
     });
   });
 
