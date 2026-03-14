@@ -2,6 +2,8 @@ use serde::Serialize;
 use serde_wasm_bindgen::Serializer;
 use wasm_bindgen::prelude::*;
 
+pub mod ast;
+
 /// Maximum allowed input size (1 MB).
 const MAX_INPUT_SIZE: usize = 1_048_576;
 
@@ -166,6 +168,14 @@ pub fn stringify_toml(value: JsValue) -> Result<String, JsError> {
     let result = toml::to_string_pretty(&v)
         .map_err(|e| JsError::new(&format!("TOML stringify error: {e}")))?;
     check_output_size(result)
+}
+
+/// Extract AST from Markdown body.
+#[wasm_bindgen]
+pub fn extract_markdown_ast(markdown: &str) -> Result<JsValue, JsError> {
+    check_input_size(markdown)?;
+    let ast = ast::extract_ast(markdown);
+    to_js(&ast)
 }
 
 #[cfg(test)]

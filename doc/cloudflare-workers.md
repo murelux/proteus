@@ -20,7 +20,7 @@ Proteus deployed on Cloudflare Workers provides two core services:
 wrangler deploy
 ```
 
-`wrangler.json` only contains the Worker name, entry point, and compatibility settings. **All KV bindings and environment variables are managed through the Cloudflare Dashboard** — nothing is committed to the config file.
+`packages/proteus/wrangler.json` only contains the Worker name, entry point, and compatibility settings. **All KV bindings and environment variables are managed through the Cloudflare Dashboard** — nothing is committed to the config file.
 
 ---
 

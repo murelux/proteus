@@ -17,55 +17,57 @@ Markdown front matter parsing and serialization library. Uses **Rust → WebAsse
 
 ## Architecture
 
+Proteus is a **monorepo** composed of several specialized packages:
+
+- **`proteus`**: The core library handling extraction, parsing (Rust WASM), and validation.
+- **`vite-plugin-proteus`**: A Vite plugin for importing Markdown files as structured data.
+
 ```
                         ┌──────────────────────────────────────────┐
-                        │          TypeScript Layer (src/)          │
+                        │       Proteus Core (packages/proteus)    │
     Source string ─────►│                                          │
-                        │  extractFrontMatter()   Pure string ops  │
+                        │  extractor/         Pure string ops      │
                         │        │                                 │
                         │        ▼                                 │
-                        │  detectFormat()          Delimiter + char │
+                        │  detector/          Delimiter detection  │
                         │        │                                 │
                         │        ▼                                 │
                         │  ┌─────────────────────────────────┐     │
                         │  │  Rust WASM (pkg/)               │     │
-                        │  │  serde-saphyr → YAML 1.2        │     │
-                        │  │  serde_json   → JSON            │     │
-                        │  │  toml         → TOML            │     │
-                        │  │  wasm-bindgen → JS ↔ Rust bridge│     │
+                        │  │  Parser Core (YAML/TOML/JSON)   │     │
                         │  └─────────────────────────────────┘     │
                         │        │                                 │
                         │        ▼                                 │
-                        │  sanitizeKeys()         Filter __proto__ │
+                        │  sanitizer/         Security filters     │
                         │        │                                 │
                         │        ▼                                 │
-                        │  validate() [optional]  Valibot schema   │
+                        │  validator/         Standard Schema      │
                         │        │                                 │
                         │        ▼                                 │
                         │  ParseResult<T>         Discriminated    │
-                        │                         union type       │
+                        │                         union            │
                         └──────────────────────────────────────────┘
 ```
 
-**Key Design Decisions:**
-
-- **Extraction and detection are WASM-free** — `extractFrontMatter()` and `detectFormat()` are pure string operations, importable separately (`@quill/proteus/extractor`) and usable without WASM
-- **Lazy WASM loading** — Async APIs automatically load and cache the `.wasm` binary on first call; sync APIs require calling `initWasm()` upfront
-- **JSON fast path** — When JSON is detected, uses `JSON.parse()` directly, skipping the WASM layer to avoid double parsing
-- **Lazy Valibot loading** — `validate()` uses dynamic `import()`; valibot is never imported if the `schema` option is not set
-- **Dual size limits** — Both the TS and Rust layers independently enforce a 1 MB input limit; serialization output has the same 1 MB cap
-
 ## Installation
+
+### Core Library
 
 ```bash
 # Bun
-bunx jsr add @quill/proteus
+bun add proteus
 
 # Deno
 deno add jsr:@quill/proteus
 ```
 
-> **Note:** This package exports TypeScript source files directly. It requires a TS-capable runtime (Bun, Deno) or a bundler (Vite, wrangler, etc.). Native Node.js is not supported.
+### Vite Plugin
+
+```bash
+bun add vite-plugin-proteus -D
+```
+
+> **Note:** The core package exports TypeScript source files directly. It requires a TS-capable runtime (Bun, Deno) or a bundler (Vite, wrangler, etc.).
 
 ## Quick Start
 
@@ -123,38 +125,6 @@ const result = await parseFrontMatter(source, {
 // result.data is automatically typed as { title: string; draft: boolean }
 ```
 
-### Error Handling
-
-```typescript
-// Default strict: true — parse failures throw exceptions
-try {
-  const result = await parseFrontMatter(malformed);
-} catch (err) {
-  if (err instanceof ParseError) {
-    console.error(`${err.format} syntax error at line ${err.line}, column ${err.column}`);
-  }
-}
-
-// strict: false — parse failures are captured in result.error
-const result = await parseFrontMatter(malformed, { strict: false });
-if (result.error) {
-  console.warn(result.error.message);
-  // result.content is still available
-}
-```
-
-### Serialization
-
-```typescript
-import { stringifyFrontMatter } from "@quill/proteus";
-
-const md = await stringifyFrontMatter(
-  { title: "Hello", tags: ["a", "b"] },
-  "# Content",
-  { format: "toml" }, // Optional, defaults to yaml
-);
-```
-
 ## API Reference
 
 ### Functions
@@ -197,61 +167,6 @@ type ParseResult<T> = ParseResultSuccess<T> | ParseResultEmpty | ParseResultErro
 | `excerpt`    | `boolean \| { separator }`   | `false`                           | Extract excerpt (default separator: `<!-- more -->`) |
 | `delimiters` | `DelimiterPair[]`            | `---/---` · `---/...` · `+++/+++` | Custom delimiter pairs                          |
 
-### `StringifyOptions`
-
-| Option      | Type                         | Default                                        | Description      |
-|:------------|:-----------------------------|:-----------------------------------------------|:-----------------|
-| `format`    | `"yaml" \| "json" \| "toml"` | `"yaml"`                                      | Output format    |
-| `delimiter` | `DelimiterPair`              | Inferred by format (yaml/json → `---`, toml → `+++`) | Custom delimiter |
-
-### Error Types
-
-All errors extend `FrontMatterError`:
-
-| Class              | Thrown When                  | Extra Properties                 |
-|:-------------------|:----------------------------|:---------------------------------|
-| `FrontMatterError` | General errors (size limit)  | —                                |
-| `ExtractionError`  | Unclosed delimiters, etc.    | —                                |
-| `ParseError`       | YAML/JSON/TOML syntax error  | `format`, `line?`, `column?`     |
-| `ValidationError`  | Valibot schema failure       | `issues: unknown[]`              |
-
-### Subpath Exports
-
-The main entry point registers WASM loading and Valibot lazy-loading logic. The following subpaths **do not import WASM**, suitable for tree-shaking or lightweight detection only:
-
-| Path                         | Export                 | Dependencies |
-|:-----------------------------|:-----------------------|:-------------|
-| `@quill/proteus/extractor`   | `extractFrontMatter()` | None         |
-| `@quill/proteus/detector`    | `detectFormat()`       | None         |
-| `@quill/proteus/validator`   | `validate()`           | valibot      |
-| `@quill/proteus/sanitizer`   | `sanitizeKeys()`       | None         |
-| `@quill/proteus/stringify`   | `stringifyFrontMatter()` | WASM       |
-
-## CLI
-
-```bash
-proteus parse post.md --pretty
-proteus detect post.md
-proteus extract post.md
-proteus validate post.md
-```
-
-| Command    | Description                                  |
-|:-----------|:---------------------------------------------|
-| `parse`    | Parse front matter, output JSON              |
-| `extract`  | Output raw front matter text (unparsed)      |
-| `detect`   | Detect and print the format                  |
-| `validate` | Parse and validate (exit code 1 on failure)  |
-
-| Flag                        | Description                               |
-|:----------------------------|:------------------------------------------|
-| `-f, --format <fmt>`        | Force format: yaml / json / toml          |
-| `-d, --delimiter <delim>`   | Custom delimiter, e.g. `"~~~"` or `"<!--,-->"` |
-| `-j, --json`                | Compact JSON output (default)             |
-| `-p, --pretty`              | Pretty-printed JSON output                |
-| `-h, --help`                | Help information                          |
-| `--`                        | Treat remaining arguments as positionals  |
-
 ## Security
 
 | Measure                  | Description                                                                                   |
@@ -260,32 +175,19 @@ proteus validate post.md
 | **Input/output size limit**   | 1 MB each for parse input and serialization output (UTF-8 bytes), enforced in both TS and Rust layers |
 | **Error message sanitization** | In `strict: false` mode, error messages strip file paths and stack traces, truncated to 300 chars |
 | **Security response headers** | Worker responses include `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy` |
-| **Slug validation**           | Worker GET endpoint validates slug format (alphanumeric, hyphens, underscores, dots, slashes) and blocks path traversal |
-
-## Cloudflare Workers
-
-See [doc/cloudflare-workers.md](doc/cloudflare-workers.md) for the full deployment guide — KV namespace setup, API routes, CORS, environment variables, and security features.
-
-## Known Limitations
-
-- **No native Node.js support** — The package exports `.ts` source files; requires Bun/Deno or a bundler
-- **Sync API requires pre-initialization** — `parseFrontMatterSync()` requires `await initWasm()` beforehand; truly zero-config sync is not possible
-- **Valibot only** — Schema validation only supports Valibot (via the [Standard Schema](https://github.com/standard-schema/standard-schema) protocol); Zod etc. are not supported
-- **YAML 1.2 only** — The Rust layer uses `serde-saphyr`, incompatible with YAML 1.1 features (e.g. octal `0777`, boolean `yes/no`)
-- **YAML→JSON type normalization** — The WASM parser converts YAML through a `serde_json::Value` intermediate representation. This means: YAML timestamps (e.g. `2024-01-15`) become strings, `yes`/`no`/`on`/`off` are treated as booleans (YAML 1.1 compat), and integers beyond JavaScript's `Number.MAX_SAFE_INTEGER` (2^53 − 1) may lose precision. Use quoted strings in YAML for values that must survive roundtrips exactly.
-- **No streaming** — Input is fully loaded into memory before parsing; files >1 MB are rejected
 
 ## Development
 
+This is a Monorepo. Run commands from the root using Bun:
+
 ```bash
 bun install
-bun run build:wasm    # Requires Rust + wasm-pack
-bun run test          # Bun (Vitest)
-bun run test:deno     # Deno
-bun run test:worker   # Cloudflare Workers (Miniflare)
+bun run build:wasm    # Rebuild Rust WASM core
+bun test              # Run all tests (Core + Plugins)
+bun run test:deno     # Run Deno-specific tests
 ```
 
-For the complete guide — WASM build, linting, type checking, project structure, and per-runtime test details — see [doc/development.md](doc/development.md).
+For the complete guide — WASM build, linting, project structure, and per-runtime test details — see [doc/development.md](doc/development.md).
 
 ## License
 
