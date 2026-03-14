@@ -77,7 +77,14 @@ pub fn extract_ast(markdown: &str) -> MarkdownAst {
     let mut current_code_language: Option<String> = None;
     let mut current_code_content = String::new();
 
-    let parser = Parser::new(markdown);
+    use pulldown_cmark::Options;
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
+    options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
+
+    let parser = Parser::new_ext(markdown, options);
 
     for event in parser {
         match event {

@@ -1,5 +1,5 @@
 [package]
-name = "matter-wasm"
+name = "proteus-wasm"
 version = "0.1.1"
 edition = "2021"
 description = "WASM-compiled parsers for YAML, JSON, and TOML front matter"
@@ -15,7 +15,7 @@ serde_json = { version = "1", default-features = false, features = ["alloc"] }
 serde-saphyr = { version = "0.0.19", default-features = false }
 toml = { version = "0.8", default-features = false, features = ["parse", "display"] }
 serde-wasm-bindgen = "0.6"
-pulldown-cmark = { version = "0.13.1", default-features = false }
+pulldown-cmark = { version = "0.13.1", default-features = false, features = ["html"] }
 
 [profile.release]
 opt-level = "z"
