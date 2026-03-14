@@ -51,7 +51,7 @@ export interface IndexerOptions extends ParseOptions {
  * ```
  */
 export class ProteusIndexer<T extends Record<string, unknown> = Record<string, unknown>> {
-  private _records: ParseResult<T>[];
+  private readonly _records: ParseResult<T>[];
 
   /**
    * Initialize a new Indexer manually with pre-loaded results.

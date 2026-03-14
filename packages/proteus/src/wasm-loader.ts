@@ -96,7 +96,7 @@ export async function getWasmParsers(): Promise<WasmParsers> {
  */
 export function getWasmParsersSync(): WasmParsers {
   if (!wasmModule) {
-    throw new Error(
+    throw new TypeError(
       "WASM not initialized — call `await initWasm()` before using synchronous APIs.",
     );
   }
@@ -158,7 +158,7 @@ export function _preloadWasmModule(mod: WasmParsers): void {
  */
 async function readWasmFile(url: URL): Promise<ArrayBuffer> {
   // Deno
-  if (typeof Deno !== "undefined") {
+  if (Deno !== undefined) {
     const bytes = await Deno.readFile(url);
     return (bytes.buffer as ArrayBuffer).slice(
       bytes.byteOffset,
@@ -167,7 +167,7 @@ async function readWasmFile(url: URL): Promise<ArrayBuffer> {
   }
 
   // Bun
-  if (typeof Bun !== "undefined") {
+  if (Bun !== undefined) {
     return Bun.file(url).arrayBuffer();
   }
 

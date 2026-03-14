@@ -276,6 +276,110 @@ interface ParseCallbacks<T> {
 }
 
 /**
+ * Helper to handle empty front matter extraction.
+ */
+function handleEmptyFrontMatter<T>(
+  source: string,
+  options: ParseOptions | undefined,
+  extraction: ExtractionResult | null,
+  callbacks: ParseCallbacks<T>,
+): ParseResult<T> {
+  const body = extraction?.content ?? source;
+  const fmt = options?.format ?? "yaml";
+  const excerpt = options?.excerpt ? extractExcerpt(body, options.excerpt) : undefined;
+
+  let ast: ProteusAST | undefined;
+  let toc: TocNode[] | undefined;
+  const needsAst = options?.extractAst || options?.extractToc;
+
+  if (needsAst) {
+    try {
+      const wasm = callbacks.getWasm();
+      if (!(wasm instanceof Promise)) {
+        ast = wasm.extract_markdown_ast(body) as ProteusAST;
+        if (options?.extractToc && ast.headings) {
+          toc = generateTOC(ast.headings);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return {
+    data: {} as Record<string, never>,
+    content: body,
+    format: fmt,
+    isEmpty: true,
+    excerpt,
+    ast: options?.extractAst ? ast : undefined,
+    toc,
+  } satisfies ParseResultEmpty;
+}
+
+/**
+ * Helper to handle AST and TOC extraction (sync or async).
+ */
+async function handleAstExtraction<T>(
+  content: string,
+  options: ParseOptions | undefined,
+  callbacks: ParseCallbacks<T>,
+  isAsync: boolean,
+): Promise<{ ast: ProteusAST | undefined; toc: TocNode[] | undefined }> {
+  const needsAst = options?.extractAst || options?.extractToc;
+  if (!needsAst) return { ast: undefined, toc: undefined };
+
+  try {
+    const wasm = isAsync ? await callbacks.getWasm() : callbacks.getWasm();
+    if (wasm instanceof Promise) return { ast: undefined, toc: undefined };
+
+    const ast = wasm.extract_markdown_ast(content) as ProteusAST;
+    let toc: TocNode[] | undefined;
+    if (options?.extractToc && ast.headings) {
+      toc = generateTOC(ast.headings);
+    }
+    return { ast, toc };
+  } catch {
+    return { ast: undefined, toc: undefined };
+  }
+}
+
+/**
+ * Builds the final success result, optionally running validation.
+ */
+function buildParseResult<T>(
+  raw: unknown,
+  ast: ProteusAST | undefined,
+  toc: TocNode[] | undefined,
+  extraction: ExtractionResult,
+  format: FrontMatterFormat,
+  excerpt: string | undefined,
+  options: ParseOptions | undefined,
+  callbacks: ParseCallbacks<T>,
+): ParseResult<T> | Promise<ParseResult<T>> {
+  const sanitised = sanitizeKeys(raw);
+
+  if (options?.schema) {
+    const validated = callbacks.validate(sanitised, options.schema);
+    if (validated instanceof Promise) {
+      return validated.then((data) =>
+        makeSuccess<T>(data, extraction, format, excerpt, options?.extractAst ? ast : undefined, toc),
+      );
+    }
+    return makeSuccess<T>(validated, extraction, format, excerpt, options?.extractAst ? ast : undefined, toc);
+  }
+
+  return makeSuccess<T>(
+    sanitised as T,
+    extraction,
+    format,
+    excerpt,
+    options?.extractAst ? ast : undefined,
+    toc,
+  );
+}
+
+/**
  * Core parsing logic shared between the async and sync public APIs.
  *
  * The `callbacks` parameter abstracts away the only two differences:
@@ -299,39 +403,7 @@ function parseFrontMatterCore<T = Record<string, unknown>>(
   const extraction = extractFrontMatter(source, options?.delimiters);
 
   if (extraction === null || extraction.rawData.length === 0) {
-    const body = extraction?.content ?? source;
-    const fmt = options?.format ?? "yaml";
-    const excerpt = options?.excerpt ? extractExcerpt(body, options.excerpt) : undefined;
-
-    let ast: ProteusAST | undefined;
-    let toc: TocNode[] | undefined;
-    const needsAst = options?.extractAst || options?.extractToc;
-
-    if (needsAst) {
-      try {
-        const wasm = callbacks.getWasm();
-        if (wasm instanceof Promise) {
-          // Need to handle async AST extraction
-        } else {
-          ast = wasm.extract_markdown_ast(body) as ProteusAST;
-          if (options?.extractToc && ast.headings) {
-            toc = generateTOC(ast.headings);
-          }
-        }
-      } catch {
-        // Ignore AST extraction errors
-      }
-    }
-
-    return {
-      data: {} as Record<string, never>,
-      content: body,
-      format: fmt,
-      isEmpty: true,
-      excerpt,
-      ast: options?.extractAst ? ast : undefined,
-      toc,
-    } satisfies ParseResultEmpty;
+    return handleEmptyFrontMatter(source, options, extraction, callbacks);
   }
 
   const detection = detectFormatWithPreparsed(extraction.rawData, extraction.delimiter);
@@ -345,77 +417,21 @@ function parseFrontMatterCore<T = Record<string, unknown>>(
     // Resolve raw data — may be sync or async depending on WASM loading.
     const rawOrPromise = resolveRawData<T>(extraction, detection, format, callbacks);
 
-    // Build the result once raw data is available.
-    const buildResult = (
-      raw: unknown,
-      ast: ProteusAST | undefined,
-      toc: TocNode[] | undefined,
-    ): ParseResult<T> | Promise<ParseResult<T>> => {
-      const sanitised = sanitizeKeys(raw);
-
-      if (options?.schema) {
-        const validated = callbacks.validate(sanitised, options.schema);
-        // Handle both sync and async validation.
-        if (validated instanceof Promise) {
-          return validated.then((data) =>
-            makeSuccess<T>(
-              data,
-              extraction,
-              format,
-              excerpt,
-              options?.extractAst ? ast : undefined,
-              toc,
-            ),
-          );
-        }
-        return makeSuccess<T>(
-          validated,
-          extraction,
-          format,
-          excerpt,
-          options?.extractAst ? ast : undefined,
-          toc,
-        );
-      }
-
-      return makeSuccess<T>(
-        sanitised as T,
-        extraction,
-        format,
-        excerpt,
-        options?.extractAst ? ast : undefined,
-        toc,
-      );
-    };
-
-    const needsAst = options?.extractAst || options?.extractToc;
-
     if (rawOrPromise instanceof Promise) {
       return rawOrPromise
         .then(async (raw) => {
-          let ast: ProteusAST | undefined;
-          let toc: TocNode[] | undefined;
-          if (needsAst) {
-            const wasm = await callbacks.getWasm();
-            try {
-              ast = wasm.extract_markdown_ast(extraction.content) as ProteusAST;
-              if (options?.extractToc && ast.headings) {
-                toc = generateTOC(ast.headings);
-              }
-            } catch {
-              // Ignore AST extraction errors
-            }
-          }
-          return buildResult(raw, ast, toc);
+          const { ast, toc } = await handleAstExtraction(extraction.content, options, callbacks, true);
+          return buildParseResult(raw, ast, toc, extraction, format, excerpt, options, callbacks);
         })
         .catch((err) =>
-          handleError(err, strict, extraction, format, excerpt, undefined, undefined),
+          handleError(err, (options?.strict !== false), extraction, format, excerpt, undefined, undefined),
         );
     }
 
     // Process synchronous path
     let astSync: ProteusAST | undefined;
     let tocSync: TocNode[] | undefined;
+    const needsAst = options?.extractAst || options?.extractToc;
     if (needsAst) {
       try {
         const wasm = callbacks.getWasm();
@@ -430,12 +446,12 @@ function parseFrontMatterCore<T = Record<string, unknown>>(
       }
     }
 
-    const result = buildResult(rawOrPromise, astSync, tocSync);
+    const result = buildParseResult(rawOrPromise, astSync, tocSync, extraction, format, excerpt, options, callbacks);
     if (result instanceof Promise) {
       return result.catch((err) =>
         handleError(
           err,
-          strict,
+          (options?.strict !== false),
           extraction,
           format,
           excerpt,

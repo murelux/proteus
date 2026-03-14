@@ -162,6 +162,37 @@ async function readLocalFileFallback(path: string | URL): Promise<string> {
 // HTTP Fetch (internal)
 // ---------------------------------------------------------------------------
 
+async function performRedirectStep(
+  url: URL,
+  redirectCount: number,
+  MAX_REDIRECTS: number,
+  controller: AbortSignal,
+): Promise<{ res: Response; nextUrl: URL | null }> {
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new TypeError(`Unsupported URL scheme: ${url.protocol}`);
+  }
+  if (isPrivateHostname(url.hostname)) {
+    throw new RangeError(`Blocked request to private/internal address: ${url.hostname}`);
+  }
+
+  const res = await fetch(url.href, { signal: controller, redirect: "manual" });
+
+  if (res.status >= 300 && res.status < 400 && res.headers.has("location")) {
+    if (redirectCount >= MAX_REDIRECTS) {
+      throw new RangeError(`Too many redirects (max ${MAX_REDIRECTS})`);
+    }
+    const location = res.headers.get("location");
+    if (location === null) {
+      throw new TypeError("Missing location header in redirect response");
+    }
+    const nextUrl = new URL(location, url);
+    if (res.body) await res.text().catch(() => {});
+    return { res, nextUrl };
+  }
+
+  return { res, nextUrl: null };
+}
+
 async function handleRedirects(
   initialUrl: URL,
   controller: AbortSignal,
@@ -171,26 +202,10 @@ async function handleRedirects(
   const MAX_REDIRECTS = 10;
 
   while (true) {
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      throw new TypeError(`Unsupported URL scheme: ${url.protocol}`);
-    }
-    if (isPrivateHostname(url.hostname)) {
-      throw new RangeError(`Blocked request to private/internal address: ${url.hostname}`);
-    }
-
-    const res = await fetch(url.href, { signal: controller, redirect: "manual" });
-
-    if (res.status >= 300 && res.status < 400 && res.headers.has("location")) {
+    const { res, nextUrl } = await performRedirectStep(url, redirectCount, MAX_REDIRECTS, controller);
+    if (nextUrl) {
+      url = nextUrl;
       redirectCount++;
-      if (redirectCount > MAX_REDIRECTS) {
-        throw new RangeError(`Too many redirects (max ${MAX_REDIRECTS})`);
-      }
-      const location = res.headers.get("location");
-      if (location === null) {
-        throw new TypeError("Missing location header in redirect response");
-      }
-      url = new URL(location, url);
-      if (res.body) await res.text().catch(() => {});
       continue;
     }
     return { res, finalUrl: url };

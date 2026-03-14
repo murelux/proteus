@@ -50,7 +50,8 @@ function extractErrorPosition(message: string): { line?: number; column?: number
   const msg = message.length > 500 ? message.slice(0, 500) : message;
 
   // Pattern: "at line X, column Y" or "line X column Y"
-  const lineColMatch = msg.match(/line\s+(\d+)[,\s]+column\s+(\d+)/i);
+  const lineColReg = /line\s+(\d+)[,\s]+column\s+(\d+)/i;
+  const lineColMatch = lineColReg.exec(msg);
   if (lineColMatch) {
     return {
       line: Number.parseInt(lineColMatch[1], 10),
@@ -59,9 +60,8 @@ function extractErrorPosition(message: string): { line?: number; column?: number
   }
 
   // Pattern: "X:Y" (common in many parsers)
-  // Use word boundary + negative lookbehind for '.' to avoid matching
-  // version numbers (e.g. "1.2:3") or timestamps.
-  const colonMatch = msg.match(/(?<![.\d])(\d+):(\d+)(?!\d*\.)/);
+  const colonReg = /(?<![.\d])(\d+):(\d+)(?!\d*\.)/;
+  const colonMatch = colonReg.exec(msg);
   if (colonMatch) {
     return {
       line: Number.parseInt(colonMatch[1], 10),

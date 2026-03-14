@@ -24,13 +24,13 @@ declare const Deno:
   | undefined;
 
 function getArgs(): string[] {
-  if (typeof Bun !== "undefined") return Bun.argv.slice(2);
-  if (typeof Deno !== "undefined") return Deno.args;
+  if (Bun !== undefined) return Bun.argv.slice(2);
+  if (Deno !== undefined) return Deno.args;
   throw new Error("Unsupported runtime — use Bun or Deno.");
 }
 
 function exit(code = 0): never {
-  if (typeof Deno !== "undefined") Deno.exit(code);
+  if (Deno !== undefined) Deno.exit(code);
   process.exit(code); // Bun supports process.exit
 }
 
@@ -134,7 +134,8 @@ function parseCliArgs(args: string[]): ParsedArgs {
     if (arg.startsWith("--")) {
       handleLongOption(arg, values);
     } else if (arg.startsWith("-") && arg.length > 1) {
-      i = handleShortFlags(arg, i, args, values);
+      const nextIdx = handleShortFlags(arg, i, args, values);
+      i = nextIdx;
     } else {
       positionals.push(arg);
     }
@@ -190,7 +191,7 @@ async function readInput(path?: string): Promise<string> {
   }
 
   try {
-    if (typeof Bun !== "undefined") {
+    if (Bun !== undefined) {
       const file = Bun.file(path);
       // Bun.file().text() crashes the process on missing files instead of
       // rejecting the promise, so we must check existence first.
@@ -199,7 +200,7 @@ async function readInput(path?: string): Promise<string> {
       }
       return await file.text();
     }
-    if (typeof Deno !== "undefined") {
+    if (Deno !== undefined) {
       return await Deno.readTextFile(path);
     }
   } catch {
@@ -211,10 +212,7 @@ async function readInput(path?: string): Promise<string> {
 /** Read all of stdin as a UTF-8 string. */
 async function readStdin(): Promise<string> {
   // 1. Deno native stdin API (avoids Node compat dependency)
-  // NOTE: Must use `typeof Deno !== "undefined"` rather than `Deno?.` because
-  // optional chaining still throws ReferenceError for undeclared globals.
-  // biome-ignore lint/complexity/useOptionalChain: Deno is an undeclared global — optional chaining throws ReferenceError
-  if (typeof Deno !== "undefined" && Deno.stdin?.readable) {
+  if (globalThis.Deno?.stdin?.readable) {
     try {
       const reader = Deno.stdin.readable.getReader();
       const chunks: Uint8Array[] = [];
@@ -283,11 +281,14 @@ async function main() {
   const source = await readInput(filePath);
   const delimiters = parseDelimiter(values.delimiter);
   const VALID_FORMATS = ["yaml", "json", "toml"];
-  const format: FrontMatterFormat | undefined = values.format
-    ? VALID_FORMATS.includes(values.format)
-      ? (values.format as FrontMatterFormat)
-      : die(`invalid format: "${values.format}"`)
-    : undefined;
+  let format: FrontMatterFormat | undefined;
+  if (values.format) {
+    if (VALID_FORMATS.includes(values.format)) {
+      format = values.format as FrontMatterFormat;
+    } else {
+      die(`invalid format: "${values.format}"`);
+    }
+  }
 
   switch (command) {
     case "parse": {
@@ -336,6 +337,8 @@ async function main() {
   }
 }
 
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   die(String(err));
-});
+}

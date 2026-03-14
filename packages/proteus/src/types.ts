@@ -175,7 +175,7 @@ export interface ParseResultSuccess<T = Record<string, unknown>> {
   /** Whether the front matter block was empty / absent. */
   isEmpty: false;
   /** Never present on success. */
-  error?: undefined;
+  error?: never;
   /** Extracted excerpt (when `excerpt` option is enabled). */
   excerpt?: string;
   /** Raw (unparsed) front matter text between delimiters. */
@@ -197,11 +197,11 @@ export interface ParseResultEmpty {
   /** Always `true` when front matter is empty or absent. */
   isEmpty: true;
   /** Never present on empty result. */
-  error?: undefined;
+  error?: never;
   /** Extracted excerpt (when `excerpt` option is enabled). */
   excerpt?: string;
   /** Absent when isEmpty is true. */
-  rawData?: undefined;
+  rawData?: never;
   /** Extracted AST from the Markdown body. */
   ast?: ProteusAST;
   /** Generated nested Table of Contents. */

@@ -12,7 +12,8 @@
     "lint": "biome check .",
     "fix": "biome check --write .",
     "format": "biome format --write .",
-    "clean": "rimraf node_modules packages/*/node_modules packages/*/dist"
+    "clean": "rimraf node_modules packages/*/node_modules packages/*/dist",
+    "deploy:worker": "bun run --filter @quill/proteus deploy"
   },
   "devDependencies": {
     "@biomejs/biome": "latest",

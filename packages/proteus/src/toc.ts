@@ -23,7 +23,7 @@ export function generateTOC(headings: AstHeading[]): TocNode[] {
     };
 
     // Pop the stack until we find a parent that has a strictly lower level number (higher hierarchy)
-    while (stack.length > 0 && stack[stack.length - 1].level >= node.level) {
+    while (stack.length > 0 && stack.at(-1)!.level >= node.level) {
       stack.pop();
     }
 
@@ -32,7 +32,7 @@ export function generateTOC(headings: AstHeading[]): TocNode[] {
       result.push(node);
     } else {
       // Child of the current top of the stack
-      stack[stack.length - 1].children.push(node);
+      stack.at(-1)!.children.push(node);
     }
 
     // Push the current node onto the stack to act as a potential parent for subsequent headings
