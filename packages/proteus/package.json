@@ -1,0 +1,135 @@
+{
+  "name": "@quill/proteus",
+  "version": "1.0.0",
+  "description": "Parse YAML, JSON, and TOML front matter from Markdown files — powered by Rust WASM",
+  "type": "module",
+  "bin": {
+    "proteus": "./cli/index.ts"
+  },
+  "exports": {
+    ".": {
+      "workerd": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "deno": "./src/index.ts",
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./extractor": {
+      "workerd": "./src/extractor.ts",
+      "bun": "./src/extractor.ts",
+      "deno": "./src/extractor.ts",
+      "types": "./src/extractor.ts",
+      "default": "./src/extractor.ts"
+    },
+    "./detector": {
+      "workerd": "./src/detector.ts",
+      "bun": "./src/detector.ts",
+      "deno": "./src/detector.ts",
+      "types": "./src/detector.ts",
+      "default": "./src/detector.ts"
+    },
+    "./validator": {
+      "workerd": "./src/validator.ts",
+      "bun": "./src/validator.ts",
+      "deno": "./src/validator.ts",
+      "types": "./src/validator.ts",
+      "default": "./src/validator.ts"
+    },
+    "./sanitizer": {
+      "workerd": "./src/sanitizer.ts",
+      "bun": "./src/sanitizer.ts",
+      "deno": "./src/sanitizer.ts",
+      "types": "./src/sanitizer.ts",
+      "default": "./src/sanitizer.ts"
+    },
+    "./stringify": {
+      "workerd": "./src/stringify.ts",
+      "bun": "./src/stringify.ts",
+      "deno": "./src/stringify.ts",
+      "types": "./src/stringify.ts",
+      "default": "./src/stringify.ts"
+    },
+    "./types": {
+      "workerd": "./src/types.ts",
+      "bun": "./src/types.ts",
+      "deno": "./src/types.ts",
+      "types": "./src/types.ts",
+      "default": "./src/types.ts"
+    },
+    "./adapters/cloudflare": {
+      "workerd": "./src/adapters/cloudflare.ts",
+      "bun": "./src/adapters/cloudflare.ts",
+      "deno": "./src/adapters/cloudflare.ts",
+      "types": "./src/adapters/cloudflare.ts",
+      "default": "./src/adapters/cloudflare.ts"
+    }
+  },
+  "files": [
+    "src/",
+    "pkg/",
+    "cli/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "bun": ">=1.0",
+    "deno": ">=2.0"
+  },
+  "scripts": {
+    "build": "bun run build:js",
+    "build:js": "echo 'JS build step - WASM is pre-built'",
+    "build:wasm": "wasm-pack build ../../crates/parser-wasm --target bundler --out-dir ../../packages/proteus/pkg --release",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "test:deno": "deno task test",
+    "test:worker": "vitest run --config vitest.config.worker.ts",
+    "test:watch": "vitest",
+    "bench": "vitest bench",
+    "typecheck": "deno task check",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "clean": "rimraf crates/parser-wasm/target pkg",
+    "clean:all": "rimraf crates/parser-wasm/target pkg node_modules"
+  },
+  "keywords": [
+    "markdown",
+    "frontmatter",
+    "front-matter",
+    "yaml",
+    "json",
+    "toml",
+    "wasm",
+    "parser"
+  ],
+  "author": "Cong Lu (https://github.com/murelux)",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/murelux/proteus.git"
+  },
+  "homepage": "https://github.com/murelux/proteus#readme",
+  "bugs": {
+    "url": "https://github.com/murelux/proteus/issues"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "latest",
+    "@types/bun": "latest",
+    "miniflare": "latest",
+    "rimraf": "latest",
+    "tinybench": "latest",
+    "valibot": "latest",
+    "vite-plugin-wasm": "latest",
+    "vitest": "latest",
+    "wasm-pack": "latest",
+    "wrangler": "latest"
+  },
+  "peerDependencies": {
+    "valibot": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "valibot": {
+      "optional": true
+    }
+  }
+}
