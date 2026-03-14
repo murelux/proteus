@@ -55,7 +55,7 @@ Proteus is a **monorepo** composed of several specialized packages:
 
 ```bash
 # Bun
-bun add proteus
+bun add @quill/proteus
 
 # Deno
 deno add jsr:@quill/proteus

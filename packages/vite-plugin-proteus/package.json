@@ -30,6 +30,7 @@
     "vite": "^5.0.0 || ^6.0.0"
   },
   "devDependencies": {
+    "@quill/proteus": "workspace:*",
     "tsup": "latest",
     "typescript": "latest",
     "vite": "latest"

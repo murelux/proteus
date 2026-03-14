@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "build": "bun run --filter \"*\" build",
-    "build:wasm": "bun run --filter proteus build:wasm",
+    "build:wasm": "bun run --filter @quill/proteus build:wasm",
     "test": "bun run --filter \"*\" test",
     "lint": "biome check .",
     "format": "biome format --write .",
