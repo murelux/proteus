@@ -43,8 +43,8 @@ export interface StandardIssue {
 
 /** The result returned by a Standard Schema `validate()` call. */
 export type StandardResult<T> =
-  | { readonly value: T; readonly issues?: undefined }
-  | { readonly issues: ReadonlyArray<StandardIssue>; readonly value?: undefined };
+  | { readonly value: T; readonly issues?: never }
+  | { readonly issues: ReadonlyArray<StandardIssue>; readonly value?: never };
 
 /**
  * Minimal structural type for a Standard Schema-compliant validator.
@@ -53,9 +53,7 @@ export type StandardResult<T> =
  */
 export interface StandardSchema<T = unknown> {
   readonly "~standard": {
-    validate(
-      value: unknown,
-    ): StandardResult<T> | Promise<StandardResult<T>>;
+    validate(value: unknown): StandardResult<T> | Promise<StandardResult<T>>;
   };
 }
 
@@ -106,10 +104,7 @@ function throwValidationError(issues: ReadonlyArray<StandardIssue>): never {
  * @throws {ValidationError} if validation fails.
  * @throws {ValidationError} if `schema` does not implement Standard Schema.
  */
-export function validate<T>(
-  data: unknown,
-  schema: StandardSchema<T>,
-): T | Promise<T> {
+export function validate<T>(data: unknown, schema: StandardSchema<T>): T | Promise<T> {
   const std = (schema as Record<string, unknown>)["~standard"] as
     | { validate?: (v: unknown) => unknown }
     | undefined;
@@ -122,9 +117,7 @@ export function validate<T>(
     );
   }
 
-  const out = std.validate(data) as
-    | StandardResult<T>
-    | Promise<StandardResult<T>>;
+  const out = std.validate(data) as StandardResult<T> | Promise<StandardResult<T>>;
 
   if (isPromise<StandardResult<T>>(out)) {
     return out.then((r) => {

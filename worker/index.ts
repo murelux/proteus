@@ -5,6 +5,7 @@ import wasmBinary from "../pkg/matter_wasm_bg.wasm";
 import { sanitizeErrorMessage } from "../src/error-utils.js";
 import { parseFrontMatter } from "../src/index.js";
 import { _preloadWasmModule } from "../src/wasm-loader.js";
+import { readStreamToString } from "../src/stream-utils.js";
 import type { KVLike, WorkerEnv } from "./utils.js";
 import {
   corsHeaders,
@@ -152,12 +153,6 @@ async function handlePost(request: Request, cors: Record<string, string>): Promi
     }
 
     // Stream-read the body with a size cap to avoid buffering oversized
-    // payloads entirely into memory before rejecting them.
-    // NOTE: `request.body` may be null for edge-case POST requests with
-    // no body. A bare `new ReadableStream()` (no underlying source) would
-    // hang forever on `reader.read()` because `close()` is never called.
-    // Create a properly-closed empty stream so the reader immediately
-    // signals `done: true`.
     const body =
       request.body ??
       new ReadableStream<Uint8Array>({
@@ -165,28 +160,14 @@ async function handlePost(request: Request, cors: Record<string, string>): Promi
           c.close();
         },
       });
-    const reader = body.getReader();
-    const chunks: Uint8Array[] = [];
-    let received = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      received += value.byteLength;
-      if (received > MAX_BODY_SIZE) {
-        reader.cancel();
-        return jsonError(`Request body too large (max: ${MAX_BODY_SIZE} bytes)`, 413, cors);
-      }
-      chunks.push(value);
-    }
-    const merged = new Uint8Array(received);
-    let offset = 0;
-    for (const chunk of chunks) {
-      merged.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    const markdown = textDecoder.decode(merged);
+
+    const markdown = await readStreamToString(body, MAX_BODY_SIZE, () => {
+      return new Error(`Request body too large (max: ${MAX_BODY_SIZE} bytes)`);
+    });
+
     const result = await parseFrontMatter(markdown);
     return jsonSuccess(result, cors);
+
   } catch (err) {
     // Reuse the shared sanitization logic from the core library.
     const raw = err instanceof Error ? err.message : String(err);

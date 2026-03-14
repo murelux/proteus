@@ -54,15 +54,18 @@ export function isValidNamespace(ns: string): boolean {
  * Returns `null` if the binding doesn't exist or isn't KV-like.
  */
 export function resolveKV(env: WorkerEnv, namespace: string): KVLike | null {
+  // Built-in shortcut for "posts" -> "KV_POSTS"
+  const ns = namespace === "posts" ? "posts" : namespace;
+
   // If allowed namespaces are configured, check against the list.
   if (env.ALLOWED_NAMESPACES) {
     const allowed = env.ALLOWED_NAMESPACES.split(",").map((n) => n.trim());
-    if (!allowed.includes(namespace)) {
+    if (!allowed.includes(ns)) {
       return null;
     }
   }
 
-  const bindingName = `KV_${namespace.toUpperCase().replace(/-/g, "_")}`;
+  const bindingName = `KV_${ns.toUpperCase().replace(/-/g, "_")}`;
   const binding = (env as Record<string, unknown>)[bindingName];
   if (binding && typeof binding === "object" && "get" in binding) {
     return binding as KVLike;

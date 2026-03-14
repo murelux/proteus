@@ -22,11 +22,11 @@
 export function sanitizeErrorMessage(message: string): string {
   // Strip absolute file paths — Windows (C:\...) and Unix (/...).
   // Supports spaces, unicode chars, and common special characters in paths.
-  let sanitized = message.replace(/(?:[A-Za-z]:)?[/\\](?:[^\s:*?"<>|\n]| (?=[^\s]))+/g, "<path>");
+  let sanitized = message.replace(/(?:[A-Za-z]:)?[/\\](?:[^\s:*?"<>|]| (?=[^\s]))+/g, "<path>");
   // Strip UNC paths like \\server\share\...
-  sanitized = sanitized.replace(/\\\\[^\s:*?"<>|\n]+/g, "<path>");
+  sanitized = sanitized.replace(/\\\\[^\s:*?"<>|]+/g, "<path>");
   // Strip relative paths like ../foo/bar or ./foo
-  sanitized = sanitized.replace(/\.{1,2}[/\\](?:[^\s:*?"<>|\n]| (?=[^\s]))+/g, "<path>");
+  sanitized = sanitized.replace(/\.{1,2}[/\\](?:[^\s:*?"<>|]| (?=[^\s]))+/g, "<path>");
   // Strip stack trace lines
   sanitized = sanitized.replace(/\n\s+at\s+.+/g, "");
   // Strip Rust panic details ("panicked at ...", "thread '...'")

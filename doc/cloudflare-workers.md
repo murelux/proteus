@@ -32,11 +32,15 @@ The Worker uses dynamic namespace resolution: the namespace name in the URL auto
 
 | URL Namespace | Dashboard Binding | Description |
 |---|---|---|
+| `posts` | `KV_POSTS` | **Standard/Reserved** article storage |
 | `content` | `KV_CONTENT` | General content storage |
 | `pages` | `KV_PAGES` | Page data |
 | `blog-posts` | `KV_BLOG_POSTS` | Blog posts (hyphens become underscores) |
 
-Conversion rule: lowercase namespace name → uppercased with `KV_` prefix, hyphens `-` replaced by underscores `_`.
+Conversion rule: lowercase namespace name → uppercased with `KV_` prefix, hyphens `-` replaced by underscores `_`. 
+
+> [!TIP]
+> `KV_POSTS` is the recommended default for article content. The route `/posts/:slug` is built-in and always available if the binding is present.
 
 ### Namespace Name Rules
 
