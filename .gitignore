@@ -5,7 +5,6 @@ node_modules/
 
 # Build outputs
 proteus.exe
-proteus
 dist/
 build/
 .wrangler/
@@ -32,3 +31,5 @@ build/
 # OS
 Thumbs.db
 Desktop.ini
+
+*.test_results.txt
