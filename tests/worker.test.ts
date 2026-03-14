@@ -32,43 +32,37 @@ import {
 // ---------------------------------------------------------------------------
 
 describe("Worker — slug validation", () => {
+  const check = (slug: string, expected: boolean) => {
+    expect(isValidSlug(slug)).toBe(expected);
+  };
+
   it("should accept simple alphanumeric slugs", () => {
-    expect(isValidSlug("hello-world")).toBe(true);
-    expect(isValidSlug("post123")).toBe(true);
-    expect(isValidSlug("my_post")).toBe(true);
+    ["hello-world", "post123", "my_post"].forEach(s => check(s, true));
   });
 
   it("should accept slugs with path separators", () => {
-    expect(isValidSlug("blog/2026/my-post")).toBe(true);
-    expect(isValidSlug("a/b/c")).toBe(true);
+    ["blog/2026/my-post", "a/b/c"].forEach(s => check(s, true));
   });
 
   it("should accept slugs with dots", () => {
-    expect(isValidSlug("file.md")).toBe(true);
-    expect(isValidSlug("v1.0.0")).toBe(true);
+    ["file.md", "v1.0.0"].forEach(s => check(s, true));
   });
 
   it("should reject empty slugs", () => {
-    expect(isValidSlug("")).toBe(false);
+    check("", false);
   });
 
   it("should reject slugs starting with non-alphanumeric chars", () => {
-    expect(isValidSlug("-leading-dash")).toBe(false);
-    expect(isValidSlug("_leading-underscore")).toBe(false);
-    expect(isValidSlug(".hidden")).toBe(false);
-    expect(isValidSlug("/absolute")).toBe(false);
+    ["-leading-dash", "_leading-underscore", ".hidden", "/absolute"].forEach(s => check(s, false));
   });
 
   it("should reject slugs with special characters", () => {
-    expect(isValidSlug("hello world")).toBe(false);
-    expect(isValidSlug("path/../traversal")).toBe(false);
-    expect(isValidSlug("slug<script>")).toBe(false);
-    expect(isValidSlug("slug:colon")).toBe(false);
+    ["hello world", "path/../traversal", "slug<script>", "slug:colon"].forEach(s => check(s, false));
   });
 
   it("should reject slugs exceeding max length", () => {
-    expect(isValidSlug("a".repeat(256))).toBe(true);
-    expect(isValidSlug("a".repeat(257))).toBe(false);
+    check("a".repeat(256), true);
+    check("a".repeat(257), false);
   });
 
   it("should validate constants match worker expectations", () => {
@@ -85,27 +79,21 @@ describe("Worker — slug validation", () => {
 // ---------------------------------------------------------------------------
 
 describe("Worker — namespace validation", () => {
+  const check = (ns: string, expected: boolean) => {
+    expect(isValidNamespace(ns)).toBe(expected);
+  };
+
   it("should accept valid namespace names", () => {
-    expect(isValidNamespace("content")).toBe(true);
-    expect(isValidNamespace("blog-posts")).toBe(true);
-    expect(isValidNamespace("a")).toBe(true);
-    expect(isValidNamespace("pages")).toBe(true);
-    expect(isValidNamespace("my-kv-store")).toBe(true);
+    ["content", "blog-posts", "a", "pages", "my-kv-store"].forEach(n => check(n, true));
   });
 
   it("should reject invalid namespace names", () => {
-    expect(isValidNamespace("")).toBe(false);
-    expect(isValidNamespace("UPPER")).toBe(false);
-    expect(isValidNamespace("-leading")).toBe(false);
-    expect(isValidNamespace("trailing-")).toBe(false);
-    expect(isValidNamespace("has space")).toBe(false);
-    expect(isValidNamespace("has.dot")).toBe(false);
-    expect(isValidNamespace("has/slash")).toBe(false);
+    ["", "UPPER", "-leading", "trailing-", "has space", "has.dot", "has/slash"].forEach(n => check(n, false));
   });
 
   it("should reject namespaces exceeding max length", () => {
-    expect(isValidNamespace("a".repeat(64))).toBe(true);
-    expect(isValidNamespace("a".repeat(65))).toBe(false);
+    check("a".repeat(64), true);
+    check("a".repeat(65), false);
   });
 });
 
@@ -165,37 +153,32 @@ describe("Worker — KV namespace resolution", () => {
 // ---------------------------------------------------------------------------
 
 describe("Worker — error sanitization (shared)", () => {
-  it("should strip absolute Unix paths", () => {
-    const msg = "Failed at /home/user/project/src/file.ts";
+  const check = (msg: string, excluded: string, included: string) => {
     const result = sanitizeErrorMessage(msg);
-    expect(result).not.toContain("/home/user");
-    expect(result).toContain("<path>");
+    expect(result).not.toContain(excluded);
+    expect(result).toContain(included);
+  };
+
+  it("should strip absolute Unix paths", () => {
+    check("Failed at /home/user/project/src/file.ts", "/home/user", "<path>");
   });
 
   it("should strip absolute Windows paths", () => {
-    const msg = "Error in C:\\Users\\dev\\project\\file.ts";
-    const result = sanitizeErrorMessage(msg);
-    expect(result).not.toContain("C:\\Users");
-    expect(result).toContain("<path>");
+    check("Error in C:\\Users\\dev\\project\\file.ts", "C:\\Users", "<path>");
   });
 
   it("should strip relative paths", () => {
-    const msg = "Error in ../src/index.ts and ./foo/bar.js";
-    const result = sanitizeErrorMessage(msg);
+    const result = sanitizeErrorMessage("Error in ../src/index.ts and ./foo/bar.js");
     expect(result).not.toContain("../src");
     expect(result).not.toContain("./foo");
   });
 
   it("should strip Rust panic details", () => {
-    const msg = "thread 'main' panicked at src/lib.rs:42: assertion failed";
-    const result = sanitizeErrorMessage(msg);
-    expect(result).not.toContain("panicked");
-    expect(result).toContain("<internal error>");
+    check("thread 'main' panicked at src/lib.rs:42: assertion failed", "panicked", "<internal error>");
   });
 
   it("should strip stack trace lines", () => {
-    const msg =
-      "Error occurred\n    at Object.parse (/path/to/file.js:10:5)\n    at Module._compile";
+    const msg = "Error occurred\n    at Object.parse (/path/to/file.js:10:5)\n    at Module._compile";
     const result = sanitizeErrorMessage(msg);
     expect(result).not.toContain("at Object.parse");
     expect(result).not.toContain("at Module._compile");
@@ -217,149 +200,64 @@ describe("Worker — error sanitization (shared)", () => {
 // Worker route logic (simulated fetch handler using real worker utils)
 // ---------------------------------------------------------------------------
 
-/** Default allowed origins for simulated tests. */
 const TEST_ALLOWED_ORIGINS = "https://example.com,https://app.example.com";
+const mockKV: KVLike = { async get() { return null; } };
+const testEnv: WorkerEnv = { KV_CONTENT: mockKV, ALLOWED_ORIGINS: TEST_ALLOWED_ORIGINS };
 
-/** Mock KV store that always returns null (no data). */
-const mockKV: KVLike = {
-  async get() {
-    return null;
-  },
-};
-
-/** Simulated environment with a "content" namespace. */
-const testEnv: WorkerEnv = {
-  KV_CONTENT: mockKV,
-  ALLOWED_ORIGINS: TEST_ALLOWED_ORIGINS,
-};
-
-/**
- * Simulated worker handler that mirrors the route logic in worker/index.ts
- * using the REAL exported utilities (corsHeaders, securityHeaders, isValidSlug,
- * isValidNamespace, resolveKV) from worker/utils.ts, ensuring tests stay in
- * sync with the implementation.
- */
-async function simulatedFetch(request: Request): Promise<Response> {
-  const url = new URL(request.url);
-  const origin = request.headers.get("origin");
-  const cors = corsHeaders(origin, testEnv.ALLOWED_ORIGINS as string | undefined);
-
-  if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: { ...cors } });
-  }
-
-  if (request.method === "POST") {
-    try {
-      const contentLength = request.headers.get("content-length");
-      if (contentLength && Number.parseInt(contentLength, 10) > MAX_BODY_SIZE) {
-        return Response.json(
-          { error: `Request body too large (max: ${MAX_BODY_SIZE} bytes)` },
-          { status: 413, headers: { ...cors, ...securityHeaders } },
-        );
-      }
-
-      const markdown = await request.text();
-      const byteLength = new TextEncoder().encode(markdown).byteLength;
-      if (byteLength > MAX_BODY_SIZE) {
-        return Response.json(
-          { error: `Request body too large (max: ${MAX_BODY_SIZE} bytes)` },
-          { status: 413, headers: { ...cors, ...securityHeaders } },
-        );
-      }
-
-      const result = await parseFrontMatter(markdown);
-      return Response.json(result, {
-        headers: { ...cors, ...securityHeaders },
-      });
-    } catch (err) {
-      const raw = err instanceof Error ? err.message : String(err);
-      const message = sanitizeErrorMessage(raw);
-      return Response.json(
-        { error: message },
-        { status: 400, headers: { ...cors, ...securityHeaders } },
-      );
-    }
-  }
-
-  // Only GET beyond this point
-  if (request.method !== "GET") {
-    return Response.json(
-      { error: "Method not allowed" },
-      { status: 405, headers: { ...cors, ...securityHeaders } },
-    );
-  }
-
-  // Parse path: /:namespace/by-slug/:slug or /:namespace/:slug
-  let segments: string[];
+async function handlePost(request: Request, cors: Record<string, string>): Promise<Response> {
   try {
-    segments = url.pathname.slice(1).split("/").map(decodeURIComponent);
-  } catch {
-    return Response.json(
-      { error: "Invalid URL encoding" },
-      { status: 400, headers: { ...cors, ...securityHeaders } },
-    );
+    const contentLength = request.headers.get("content-length");
+    if (contentLength && Number.parseInt(contentLength, 10) > MAX_BODY_SIZE) {
+      return Response.json({ error: `Request body too large (max: ${MAX_BODY_SIZE} bytes)` }, { status: 413, headers: { ...cors, ...securityHeaders } });
+    }
+
+    const markdown = await request.text();
+    const byteLength = new TextEncoder().encode(markdown).byteLength;
+    if (byteLength > MAX_BODY_SIZE) {
+      return Response.json({ error: `Request body too large (max: ${MAX_BODY_SIZE} bytes)` }, { status: 413, headers: { ...cors, ...securityHeaders } });
+    }
+
+    const result = await parseFrontMatter(markdown);
+    return Response.json(result, { headers: { ...cors, ...securityHeaders } });
+  } catch (err) {
+    const message = sanitizeErrorMessage(err instanceof Error ? err.message : String(err));
+    return Response.json({ error: message }, { status: 400, headers: { ...cors, ...securityHeaders } });
   }
+}
+
+async function handleGet(url: URL, cors: Record<string, string>): Promise<Response> {
+  let segments: string[];
+  try { segments = url.pathname.slice(1).split("/").map(decodeURIComponent); }
+  catch { return Response.json({ error: "Invalid URL encoding" }, { status: 400, headers: { ...cors, ...securityHeaders } }); }
 
   if (segments.length === 1 && segments[0] === "") {
-    return Response.json(
-      { error: "Missing namespace and slug. Usage: GET /:namespace/:slug" },
-      { status: 400, headers: { ...cors, ...securityHeaders } },
-    );
+    return Response.json({ error: "Missing namespace and slug. Usage: GET /:namespace/:slug" }, { status: 400, headers: { ...cors, ...securityHeaders } });
   }
 
   const namespace = segments[0];
-  if (!isValidNamespace(namespace)) {
-    return Response.json(
-      { error: "Invalid namespace format" },
-      { status: 400, headers: { ...cors, ...securityHeaders } },
-    );
-  }
+  if (!isValidNamespace(namespace)) return Response.json({ error: "Invalid namespace format" }, { status: 400, headers: { ...cors, ...securityHeaders } });
 
   const kv = resolveKV(testEnv, namespace);
-  if (!kv) {
-    return Response.json(
-      { error: `Unknown namespace: ${namespace}` },
-      { status: 404, headers: { ...cors, ...securityHeaders } },
-    );
-  }
+  if (!kv) return Response.json({ error: `Unknown namespace: ${namespace}` }, { status: 404, headers: { ...cors, ...securityHeaders } });
 
-  // GET /:namespace/by-slug/:slug
-  if (segments.length >= 3 && segments[1] === "by-slug") {
-    const slug = segments.slice(2).join("/");
-    if (!slug || !isValidSlug(slug)) {
-      return Response.json(
-        { error: "Invalid slug format" },
-        { status: 400, headers: { ...cors, ...securityHeaders } },
-      );
-    }
-    // KV always returns null in test context — return 404
-    return Response.json(
-      { error: "Not found" },
-      { status: 404, headers: { ...cors, ...securityHeaders } },
-    );
-  }
+  const isBySlug = segments.length >= 3 && segments[1] === "by-slug";
+  const slug = segments.slice(isBySlug ? 2 : 1).join("/");
 
-  // GET /:namespace/:slug
-  if (segments.length >= 2) {
-    const slug = segments.slice(1).join("/");
-    if (!slug || !isValidSlug(slug)) {
-      return Response.json(
-        { error: "Invalid slug format" },
-        { status: 400, headers: { ...cors, ...securityHeaders } },
-      );
-    }
-    // KV always returns null in test context — return 404
-    return Response.json(
-      { error: "Not found" },
-      { status: 404, headers: { ...cors, ...securityHeaders } },
-    );
-  }
+  if (!slug || !isValidSlug(slug)) return Response.json({ error: "Invalid slug format" }, { status: 400, headers: { ...cors, ...securityHeaders } });
+  if (segments.length < (isBySlug ? 3 : 2)) return Response.json({ error: "Missing slug. Usage: GET /:namespace/:slug" }, { status: 400, headers: { ...cors, ...securityHeaders } });
 
-  // Namespace without slug
-  return Response.json(
-    { error: "Missing slug. Usage: GET /:namespace/:slug" },
-    { status: 400, headers: { ...cors, ...securityHeaders } },
-  );
+  return Response.json({ error: "Not found" }, { status: 404, headers: { ...cors, ...securityHeaders } });
+}
+
+async function simulatedFetch(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  const cors = corsHeaders(request.headers.get("origin"), testEnv.ALLOWED_ORIGINS as string | undefined);
+
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...cors } });
+  if (request.method === "POST") return handlePost(request, cors);
+  if (request.method === "GET") return handleGet(url, cors);
+
+  return Response.json({ error: "Method not allowed" }, { status: 405, headers: { ...cors, ...securityHeaders } });
 }
 
 describe("Worker — route logic (simulated fetch handler)", () => {

@@ -202,13 +202,13 @@ describe("CLI", { timeout: 15_000 }, () => {
     it("should error when --format is missing its value", async () => {
       const { exitCode, stderr } = await runCli(["parse", yamlFile, "-f"]);
       expect(exitCode).not.toBe(0);
-      expect(stderr).toContain("missing value for --format");
+      expect(stderr).toContain("missing value for -f");
     });
 
     it("should error when --delimiter is missing its value", async () => {
       const { exitCode, stderr } = await runCli(["parse", yamlFile, "-d"]);
       expect(exitCode).not.toBe(0);
-      expect(stderr).toContain("missing value for --delimiter");
+      expect(stderr).toContain("missing value for -d");
     });
 
     it("should support --format=yaml equals syntax", async () => {

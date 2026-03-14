@@ -22,15 +22,11 @@
 export function sanitizeErrorMessage(message: string): string {
   // Strip absolute file paths — Windows (C:\...) and Unix (/...).
   // Supports spaces, unicode chars, and common special characters in paths.
-  let sanitized = message.replace(/(?:[A-Za-z]:)?[/\\](?:[^\s:*?"<>|]| (?=[^\s]))+/g, "<path>");
-  // Strip UNC paths like \\server\share\...
-  sanitized = sanitized.replace(/\\\\[^\s:*?"<>|]+/g, "<path>");
-  // Strip relative paths like ../foo/bar or ./foo
-  sanitized = sanitized.replace(/\.{1,2}[/\\](?:[^\s:*?"<>|]| (?=[^\s]))+/g, "<path>");
-  // Strip stack trace lines
-  sanitized = sanitized.replace(/\n\s+at\s+.+/g, "");
-  // Strip Rust panic details ("panicked at ...", "thread '...'")
-  sanitized = sanitized.replace(/thread\s+'[^']*'\s+panicked\s+at\s+[^\n]*/g, "<internal error>");
+  let sanitized = message.replaceAll(/(?:[A-Za-z]:)?[/\\](?:[^\s:*?"<>|]| (?=[^\s]))+/g, "<path>");
+  sanitized = sanitized.replaceAll(/\\\\[^\s:*?"<>|]+/g, "<path>");
+  sanitized = sanitized.replaceAll(/\.{1,2}[/\\](?:[^\s:*?"<>|]| (?=[^\s]))+/g, "<path>");
+  sanitized = sanitized.replaceAll(/\n\s+at\s+.+/g, "");
+  sanitized = sanitized.replaceAll(/thread\s+'[^']*'\s+panicked\s+at\s+[^\n]*/g, "<internal error>");
   // Truncate to prevent excessive error detail exposure
   if (sanitized.length > 300) {
     sanitized = `${sanitized.slice(0, 300)}…`;

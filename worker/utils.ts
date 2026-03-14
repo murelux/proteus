@@ -65,7 +65,7 @@ export function resolveKV(env: WorkerEnv, namespace: string): KVLike | null {
     }
   }
 
-  const bindingName = `KV_${ns.toUpperCase().replace(/-/g, "_")}`;
+  const bindingName = `KV_${ns.toUpperCase().replaceAll("-", "_")}`;
   const binding = (env as Record<string, unknown>)[bindingName];
   if (binding && typeof binding === "object" && "get" in binding) {
     return binding as KVLike;

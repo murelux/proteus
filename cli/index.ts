@@ -49,6 +49,49 @@ interface ParsedArgs {
   positionals: string[];
 }
 
+function handleLongOption(arg: string, values: ParsedArgs["values"]): void {
+  const eqIdx = arg.indexOf("=");
+  const key = arg.slice(2, eqIdx === -1 ? arg.length : eqIdx);
+  const val = eqIdx === -1 ? undefined : arg.slice(eqIdx + 1);
+
+  switch (key) {
+    case "format": values.format = val; break;
+    case "delimiter": values.delimiter = val; break;
+    case "help": values.help = true; break;
+    case "json": values.json = true; break;
+    case "pretty": values.pretty = true; break;
+    default: die(`unknown option: --${key}`);
+  }
+}
+
+function handleShortFlags(arg: string, i: number, args: string[], values: ParsedArgs["values"]): number {
+  const flags = arg.slice(1);
+  for (let fi = 0; fi < flags.length; fi++) {
+    const ch = flags[fi];
+    switch (ch) {
+      case "h": values.help = true; break;
+      case "j": values.json = true; break;
+      case "p": values.pretty = true; break;
+      case "f":
+      case "d": {
+        const rest = flags.slice(fi + 1);
+        let val: string;
+        if (rest.length > 0) {
+          val = rest;
+        } else {
+          if (i + 1 >= args.length) die(`missing value for -${ch}`);
+          val = args[++i];
+        }
+        if (ch === "f") values.format = val;
+        else values.delimiter = val;
+        return i;
+      }
+      default: die(`unknown option: -${ch}`);
+    }
+  }
+  return i;
+}
+
 function parseCliArgs(args: string[]): ParsedArgs {
   const values: ParsedArgs["values"] = {};
   const positionals: string[] = [];
@@ -56,90 +99,19 @@ function parseCliArgs(args: string[]): ParsedArgs {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-
     if (dashdash) {
       positionals.push(arg);
       continue;
     }
-
     if (arg === "--") {
       dashdash = true;
       continue;
     }
 
-    // Long options with `=` (e.g. --format=json, --delimiter=~~~)
-    if (arg.startsWith("--") && arg.includes("=")) {
-      const eqIdx = arg.indexOf("=");
-      const key = arg.slice(2, eqIdx);
-      const val = arg.slice(eqIdx + 1);
-      if (key === "format") {
-        values.format = val;
-      } else if (key === "delimiter") {
-        values.delimiter = val;
-      } else if (key === "help") {
-        values.help = true;
-      } else if (key === "json") {
-        values.json = true;
-      } else if (key === "pretty") {
-        values.pretty = true;
-      } else {
-        die(`unknown option: --${key}`);
-      }
-      continue;
-    }
-
-    if (arg === "-h" || arg === "--help") {
-      values.help = true;
-    } else if (arg === "-f" || arg === "--format") {
-      if (i + 1 >= args.length) die("missing value for --format");
-      values.format = args[++i];
-    } else if (arg === "-j" || arg === "--json") {
-      values.json = true;
-    } else if (arg === "-p" || arg === "--pretty") {
-      values.pretty = true;
-    } else if (arg === "-d" || arg === "--delimiter") {
-      if (i + 1 >= args.length) die("missing value for --delimiter");
-      values.delimiter = args[++i];
-    } else if (arg.startsWith("--")) {
-      die(`unknown option: ${arg}`);
-    } else if (arg.startsWith("-") && arg.length > 2) {
-      // Combined short flags (e.g. -jp → -j -p)
-      const flags = arg.slice(1);
-      for (let fi = 0; fi < flags.length; fi++) {
-        const ch = flags[fi];
-        if (ch === "h") {
-          values.help = true;
-        } else if (ch === "j") {
-          values.json = true;
-        } else if (ch === "p") {
-          values.pretty = true;
-        } else if (ch === "f") {
-          // -f consumes the rest of the combined flag or the next arg
-          const rest = flags.slice(fi + 1);
-          if (rest.length > 0) {
-            values.format = rest;
-          } else if (i + 1 >= args.length) {
-            die("missing value for --format");
-          } else {
-            values.format = args[++i];
-          }
-          break;
-        } else if (ch === "d") {
-          const rest = flags.slice(fi + 1);
-          if (rest.length > 0) {
-            values.delimiter = rest;
-          } else if (i + 1 >= args.length) {
-            die("missing value for --delimiter");
-          } else {
-            values.delimiter = args[++i];
-          }
-          break;
-        } else {
-          die(`unknown option: -${ch}`);
-        }
-      }
-    } else if (arg.startsWith("-")) {
-      die(`unknown option: ${arg}`);
+    if (arg.startsWith("--")) {
+      handleLongOption(arg, values);
+    } else if (arg.startsWith("-") && arg.length > 1) {
+      i = handleShortFlags(arg, i, args, values);
     } else {
       positionals.push(arg);
     }

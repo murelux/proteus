@@ -113,7 +113,7 @@ export async function readFileContent(
     (typeof path === "string" && /^https?:/.test(path))
   ) {
     if (!options?.allowRemoteUrls) {
-      throw new Error(
+      throw new TypeError(
         `Remote URL fetching is disabled by default for security. Pass \`allowRemoteUrls: true\` in options to read from ${String(path)}`,
       );
     }
@@ -167,10 +167,10 @@ async function handleRedirects(
 
   while (true) {
     if (url.protocol !== "http:" && url.protocol !== "https:") {
-      throw new Error(`Unsupported URL scheme: ${url.protocol}`);
+      throw new TypeError(`Unsupported URL scheme: ${url.protocol}`);
     }
     if (isPrivateHostname(url.hostname)) {
-      throw new Error(`Blocked request to private/internal address: ${url.hostname}`);
+      throw new RangeError(`Blocked request to private/internal address: ${url.hostname}`);
     }
 
     const res = await fetch(url.href, { signal: controller, redirect: "manual" });
@@ -178,7 +178,7 @@ async function handleRedirects(
     if (res.status >= 300 && res.status < 400 && res.headers.has("location")) {
       redirectCount++;
       if (redirectCount > MAX_REDIRECTS) {
-        throw new Error(`Too many redirects (max ${MAX_REDIRECTS})`);
+        throw new RangeError(`Too many redirects (max ${MAX_REDIRECTS})`);
       }
       const location = res.headers.get("location")!;
       url = new URL(location, url);
@@ -198,7 +198,7 @@ function validateResponse(res: Response, url: string | URL): void {
   if (contentLength) {
     const cl = Number.parseInt(contentLength, 10);
     if (!Number.isNaN(cl) && cl > MAX_FETCH_SIZE) {
-      throw new Error(`Response too large (${cl} bytes, max ${MAX_FETCH_SIZE})`);
+      throw new RangeError(`Response too large (${cl} bytes, max ${MAX_FETCH_SIZE})`);
     }
   }
 
@@ -209,7 +209,7 @@ function validateResponse(res: Response, url: string | URL): void {
       mimeType.startsWith("text/") ||
       /^application\/(json|toml|yaml|x-yaml|markdown)$/.test(mimeType);
     if (!isTextLike) {
-      throw new Error(`Unexpected Content-Type "${mimeType}" (expected text)`);
+      throw new TypeError(`Unexpected Content-Type "${mimeType}" (expected text)`);
     }
   }
 }

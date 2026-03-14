@@ -123,7 +123,7 @@ export async function initWasm(): Promise<void> {
  */
 export function _resetWasmCache(): void {
   // Warn if this is called outside of a test environment
-  if (typeof process !== "undefined" && process.env && process.env.NODE_ENV === "production") {
+  if (typeof process !== "undefined" && process.env?.NODE_ENV === "production") {
     console.warn("proteus: `_resetWasmCache` should only be used in testing environments.");
   }
   wasmModule = null;
@@ -227,7 +227,7 @@ async function loadWasmInner(): Promise<WasmParsers> {
         "Ensure the WASM binary exists at pkg/matter_wasm_bg.wasm " +
         "and was built with `bun run build:wasm`. " +
         "If running under a bundler, check that vite-plugin-wasm (or equivalent) is configured.";
-      throw new Error(`Failed to load WASM module via both bundler and direct paths. ${hint}`, {
+      throw new TypeError(`Failed to load WASM module via both bundler and direct paths. ${hint}`, {
         cause: directErr,
       });
     }
@@ -243,7 +243,7 @@ async function loadWasmDirect(): Promise<WasmParsers> {
   try {
     wasmUrl = new URL("../pkg/matter_wasm_bg.wasm", import.meta.url);
   } catch (err) {
-    throw new Error(
+    throw new TypeError(
       "Failed to resolve WASM binary path: `import.meta.url` may not be available in this runtime.",
       { cause: err },
     );

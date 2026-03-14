@@ -115,7 +115,7 @@ export function validateDelimiters(delimiters: readonly DelimiterPair[]): void {
  * @internal Shared between extractFrontMatter and hasFrontMatter.
  */
 export function stripBom(source: string): string {
-  return source.charCodeAt(0) === 0xfeff ? source.slice(1) : source;
+  return source.codePointAt(0) === 0xfeff ? source.slice(1) : source;
 }
 
 /**

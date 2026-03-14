@@ -4,6 +4,14 @@ import { hasFrontMatter, parseFrontMatter } from "../src/index.js";
 import { ExtractionError, ParseError, ValidationError } from "../src/types.js";
 
 describe("parseFrontMatter — integration", () => {
+  const check = async (source: string, format: string, data: any, contentPart?: string) => {
+    const result = await parseFrontMatter(source);
+    expect(result.format).toBe(format);
+    expect(result.isEmpty).toBe(false);
+    expect(result.data).toEqual(data);
+    if (contentPart) expect(result.content).toContain(contentPart);
+  };
+
   // -------------------------------------------------------------------------
   // YAML
   // -------------------------------------------------------------------------
@@ -21,17 +29,12 @@ draft: false
 
 This is the content of my blog post.`;
 
-      const result = await parseFrontMatter(source);
-
-      expect(result.format).toBe("yaml");
-      expect(result.isEmpty).toBe(false);
-      expect(result.data).toEqual({
+      await check(source, "yaml", {
         title: "My Blog Post",
         date: "2026-01-15",
         tags: ["typescript", "rust"],
         draft: false,
-      });
-      expect(result.content).toContain("# My Blog Post");
+      }, "# My Blog Post");
     });
   });
 
@@ -51,16 +54,11 @@ This is the content of my blog post.`;
 
 Content goes here.`;
 
-      const result = await parseFrontMatter(source);
-
-      expect(result.format).toBe("json");
-      expect(result.isEmpty).toBe(false);
-      expect(result.data).toEqual({
+      await check(source, "json", {
         title: "JSON Post",
         count: 42,
         published: true,
-      });
-      expect(result.content).toContain("# JSON Post");
+      }, "# JSON Post");
     });
   });
 
@@ -78,16 +76,11 @@ published = true
 
 Content goes here.`;
 
-      const result = await parseFrontMatter(source);
-
-      expect(result.format).toBe("toml");
-      expect(result.isEmpty).toBe(false);
-      expect(result.data).toEqual({
+      await check(source, "toml", {
         title: "TOML Post",
         count: 42,
         published: true,
-      });
-      expect(result.content).toContain("# TOML Post");
+      }, "# TOML Post");
     });
   });
 
