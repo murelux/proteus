@@ -1,0 +1,19 @@
+{
+  "name": "proteus-wasm",
+  "type": "module",
+  "description": "WASM-compiled parsers for YAML, JSON, and TOML front matter",
+  "version": "0.1.1",
+  "license": "Apache-2.0",
+  "files": [
+    "proteus_wasm_bg.wasm",
+    "proteus_wasm.js",
+    "proteus_wasm_bg.js",
+    "proteus_wasm.d.ts"
+  ],
+  "main": "proteus_wasm.js",
+  "types": "proteus_wasm.d.ts",
+  "sideEffects": [
+    "./proteus_wasm.js",
+    "./snippets/*"
+  ]
+}

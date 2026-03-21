@@ -1,0 +1,8 @@
+*
+!.gitignore
+!package.json
+!proteus_wasm.d.ts
+!proteus_wasm.js
+!proteus_wasm_bg.js
+!proteus_wasm_bg.wasm
+!proteus_wasm_bg.wasm.d.ts
