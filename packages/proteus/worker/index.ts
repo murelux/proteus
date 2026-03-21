@@ -87,7 +87,7 @@ export default {
       return jsonError("Method not allowed", 405, cors);
     }
 
-    // Parse path: /:namespace/by-slug/:slug or /:namespace/:slug
+    // Parse path: /:namespace/slug/:slug or /:namespace/:slug
     let segments: string[];
     try {
       segments = url.pathname.slice(1).split("/").map(decodeURIComponent);
@@ -109,8 +109,8 @@ export default {
       return jsonError(`Unknown namespace: ${namespace}`, 404, cors);
     }
 
-    // 3. GET /:namespace/by-slug/:slug — lookup article by slug via index
-    if (segments.length >= 3 && segments[1] === "by-slug") {
+    // 3. GET /:namespace/slug/:slug — lookup article by slug via index
+    if (segments.length >= 3 && segments[1] === "slug") {
       const slug = segments.slice(2).join("/");
       return handleBySlug(slug, kv, cors);
     }

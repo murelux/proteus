@@ -172,12 +172,12 @@ Reads data directly from KV using the slug as the key.
 curl https://proteus.<your-subdomain>.workers.dev/content/hello-world
 ```
 
-### GET /:namespace/by-slug/:slug — Index-Based Lookup
+### GET /:namespace/slug/:slug — Index-Based Lookup
 
 Looks up the slug in the `_index` key within KV to find the actual KV key, then fetches the full data.
 
 ```bash
-curl https://proteus.<your-subdomain>.workers.dev/content/by-slug/hello-world
+curl https://proteus.<your-subdomain>.workers.dev/content/slug/hello-world
 ```
 
 Expected `_index` format:

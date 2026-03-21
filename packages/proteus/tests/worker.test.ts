@@ -289,7 +289,7 @@ async function handleGet(url: URL, cors: Record<string, string>): Promise<Respon
       { status: 404, headers: { ...cors, ...securityHeaders } },
     );
 
-  const isBySlug = segments.length >= 3 && segments[1] === "by-slug";
+  const isBySlug = segments.length >= 3 && segments[1] === "slug";
   const slug = segments.slice(isBySlug ? 2 : 1).join("/");
 
   if (!isBySlug && slug === "_index") {
@@ -417,8 +417,8 @@ describe("Worker — route logic (simulated fetch handler)", () => {
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
   });
 
-  it("should return 404 for GET by-slug with valid namespace (no KV data)", async () => {
-    const req = new Request("https://example.com/content/by-slug/my-article", { method: "GET" });
+  it("should return 404 for GET slug route with valid namespace (no KV data)", async () => {
+    const req = new Request("https://example.com/content/slug/my-article", { method: "GET" });
     const res = await simulatedFetch(req);
     expect(res.status).toBe(404);
   });
