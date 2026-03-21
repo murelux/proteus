@@ -292,6 +292,13 @@ async function handleGet(url: URL, cors: Record<string, string>): Promise<Respon
   const isBySlug = segments.length >= 3 && segments[1] === "by-slug";
   const slug = segments.slice(isBySlug ? 2 : 1).join("/");
 
+  if (!isBySlug && slug === "_index") {
+    return Response.json(
+      { error: "Not found" },
+      { status: 404, headers: { ...cors, ...securityHeaders } },
+    );
+  }
+
   if (!slug || !isValidSlug(slug))
     return Response.json(
       { error: "Invalid slug format" },
@@ -412,6 +419,12 @@ describe("Worker — route logic (simulated fetch handler)", () => {
 
   it("should return 404 for GET by-slug with valid namespace (no KV data)", async () => {
     const req = new Request("https://example.com/content/by-slug/my-article", { method: "GET" });
+    const res = await simulatedFetch(req);
+    expect(res.status).toBe(404);
+  });
+
+  it("should allow direct reads of the reserved _index key", async () => {
+    const req = new Request("https://example.com/content/_index", { method: "GET" });
     const res = await simulatedFetch(req);
     expect(res.status).toBe(404);
   });

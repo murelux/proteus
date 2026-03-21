@@ -228,6 +228,20 @@ async function handleGetSlug(
   kv: KVLike,
   cors: Record<string, string>,
 ): Promise<Response> {
+  // `_index` is a reserved KV key used by index-based lookups. It should be
+  // readable directly even though it does not satisfy the public slug rules.
+  if (slug === "_index") {
+    try {
+      return await readKVEntry(kv, slug, slug, cors);
+    } catch (err) {
+      console.error(
+        `KV read error for reserved key "${slug}":`,
+        err instanceof Error ? err.message : String(err),
+      );
+      return jsonError("Internal server error", 500, cors);
+    }
+  }
+
   const validationError = validateSlugAndKV(slug, kv, cors);
   if (validationError) return validationError;
 
