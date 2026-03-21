@@ -28,7 +28,19 @@ wrangler --cwd packages/proteus deploy
 
 This is the recommended monorepo-safe entry point. It avoids Wrangler's workspace-root auto-detection issue and lets CI or Cloudflare Workers Builds deploy from the repository root without manually switching directories first.
 
-`packages/proteus/wrangler.json` only contains the Worker name, entry point, and compatibility settings. **All KV bindings and environment variables are managed through the Cloudflare Dashboard** — nothing is committed to the config file.
+`packages/proteus/wrangler.json` now commits the default Worker metadata and default KV bindings. Environment variables and any extra non-default bindings can still be managed through the Cloudflare Dashboard when needed.
+
+For this public template, the default KV bindings are now committed directly in [`wrangler.json`](../../packages/proteus/wrangler.json) using Cloudflare's automatic provisioning:
+
+- `KV_POSTS` — recommended default article/content store, exposed at `/posts/:slug`
+- `KV_PAGES` — optional static page store, exposed at `/pages/:slug`
+- `KV_CONTENT` — optional generic content store, exposed at `/content/:slug`
+- `KV_DOCS` — documentation content store, exposed at `/docs/:slug`
+- `KV_NEWS` — announcements/news store, exposed at `/news/:slug`
+- `KV_WIKI` — wiki-style knowledge store, exposed at `/wiki/:slug`
+- `KV_NOTES` — notes and digital-garden content store, exposed at `/notes/:slug`
+
+These are internal binding names, not globally shared names. Cloudflare automatically provisions account-local resources and prefixes the created resource names with the Worker name.
 
 ### Monorepo / Dashboard Setup
 
@@ -46,6 +58,16 @@ You do **not** need to re-enter `packages/proteus` or `apps/proteus` on every de
 > [!NOTE]
 > Wrangler config files do not define the Dashboard's Git Root Directory. In a monorepo, the practical code-based approach is to commit a root deploy script and have the Dashboard call that script.
 
+### Automatic Provisioning Notes
+
+Cloudflare can now automatically provision KV namespaces when a binding is declared in `wrangler.json` without an `id`.
+
+- Local `wrangler dev` creates local resources automatically
+- `wrangler deploy` creates and links the remote resources automatically
+- Dashboard / Git-connected deploys also create the resources, but the generated IDs remain visible in the Cloudflare Dashboard rather than being written back to your Git repository
+
+If a consumer of this public project needs additional namespaces, they can add more `KV_*` bindings to `wrangler.json` and redeploy. Automatic provisioning does **not** create arbitrary runtime namespaces from URL input; bindings are still declared at deploy time.
+
 ---
 
 ## KV Namespaces
@@ -59,12 +81,16 @@ The Worker uses dynamic namespace resolution: the namespace name in the URL auto
 | `posts` | `KV_POSTS` | **Standard/Reserved** article storage |
 | `content` | `KV_CONTENT` | General content storage |
 | `pages` | `KV_PAGES` | Page data |
-| `blog-posts` | `KV_BLOG_POSTS` | Blog posts (hyphens become underscores) |
+| `docs` | `KV_DOCS` | Documentation and help content |
+| `news` | `KV_NEWS` | Announcements and news entries |
+| `wiki` | `KV_WIKI` | Wiki-style knowledge content |
+| `notes` | `KV_NOTES` | Personal notes and knowledge-garden content |
+| `blog-posts` | `KV_BLOG_POSTS` | Optional custom store (hyphens become underscores) |
 
 Conversion rule: lowercase namespace name → uppercased with `KV_` prefix, hyphens `-` replaced by underscores `_`.
 
 > [!TIP]
-> `KV_POSTS` is the recommended default for article content. The route `/posts/:slug` is built-in and always available if the binding is present.
+> `KV_POSTS` is the recommended public default for article content. The route `/posts/:slug` is built-in and always available if the binding is present.
 
 ### Namespace Name Rules
 
@@ -76,11 +102,12 @@ Conversion rule: lowercase namespace name → uppercased with `KV_` prefix, hyph
 Valid examples: `content`, `blog-posts`, `my-kv-store`
 Invalid examples: `UPPER`, `-leading`, `has.dot`, `has space`
 
-### Creating KV Namespaces
+### Creating Additional KV Namespaces
+
+The default `KV_POSTS`, `KV_PAGES`, `KV_CONTENT`, `KV_DOCS`, `KV_NEWS`, `KV_WIKI`, and `KV_NOTES` bindings are provisioned automatically. You only need to create extra namespaces manually when extending the template beyond the defaults.
 
 ```bash
-# Create namespaces (note the IDs in the output)
-wrangler kv namespace create "CONTENT"
+# Example: add an extra optional namespace
 wrangler kv namespace create "BLOG_POSTS"
 ```
 
@@ -89,18 +116,18 @@ wrangler kv namespace create "BLOG_POSTS"
 1. Log in to the [Cloudflare Dashboard](https://dash.cloudflare.com/)
 2. Go to **Workers & Pages** → select the `proteus` Worker
 3. Click **Settings** → **Bindings**
-4. Click **Add** → **KV Namespace**
-5. Set the variable name to `KV_CONTENT` (or `KV_BLOG_POSTS`, etc.) and select the corresponding namespace
+4. Confirm that `KV_POSTS`, `KV_PAGES`, `KV_CONTENT`, `KV_DOCS`, `KV_NEWS`, `KV_WIKI`, and `KV_NOTES` were auto-created on first deploy
+5. Only add extra bindings manually if you extend `wrangler.json` with new `KV_*` entries
 6. Save
 
-You can add any number of KV bindings — the Worker discovers them automatically at runtime.
+You can add any number of declared `KV_*` bindings — the Worker discovers them automatically at runtime.
 
 ### Local Development
 
 Use the `--kv` flag to bind KV namespaces locally without modifying the config file:
 
 ```bash
-wrangler dev --kv KV_CONTENT=<namespace-id> --kv KV_BLOG_POSTS=<namespace-id>
+wrangler dev --kv KV_CONTENT=<namespace-id> --kv KV_DOCS=<namespace-id>
 ```
 
 ---
@@ -171,7 +198,7 @@ Configure via Dashboard under **Settings** → **Variables and Secrets**:
 | Variable | Description | Example |
 |---|---|---|
 | `ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | `https://example.com,https://app.example.com` |
-| `ALLOWED_NAMESPACES` | Comma-separated list of exposed KV namespaces (if unset, all matching bindings are exposed) | `content,blog-posts` |
+| `ALLOWED_NAMESPACES` | Comma-separated list of exposed KV namespaces (if unset, all matching bindings are exposed) | `content,docs,notes` |
 
 ### CORS Behavior
 

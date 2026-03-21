@@ -4,6 +4,29 @@
   "main": "worker/index.ts",
   "compatibility_date": "2026-02-14",
   "compatibility_flags": ["nodejs_compat"],
+  "kv_namespaces": [
+    {
+      "binding": "KV_POSTS"
+    },
+    {
+      "binding": "KV_PAGES"
+    },
+    {
+      "binding": "KV_CONTENT"
+    },
+    {
+      "binding": "KV_DOCS"
+    },
+    {
+      "binding": "KV_NEWS"
+    },
+    {
+      "binding": "KV_WIKI"
+    },
+    {
+      "binding": "KV_NOTES"
+    }
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
