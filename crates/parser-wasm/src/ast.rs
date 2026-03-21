@@ -1,6 +1,5 @@
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use serde::Serialize;
-use wasm_bindgen::prelude::*;
 
 #[derive(Serialize)]
 pub struct AstHeading {
