@@ -202,7 +202,12 @@ async function handleRedirects(
   const MAX_REDIRECTS = 10;
 
   while (true) {
-    const { res, nextUrl } = await performRedirectStep(url, redirectCount, MAX_REDIRECTS, controller);
+    const { res, nextUrl } = await performRedirectStep(
+      url,
+      redirectCount,
+      MAX_REDIRECTS,
+      controller,
+    );
     if (nextUrl) {
       url = nextUrl;
       redirectCount++;

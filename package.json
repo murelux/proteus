@@ -9,15 +9,20 @@
     "build": "bun run --filter \"*\" build",
     "build:wasm": "bun run --filter @quill/proteus build:wasm",
     "test": "bun run --filter \"*\" test",
+    "test:worker": "bun run --filter @quill/proteus test:worker",
+    "test:deno": "deno task --cwd packages/proteus test",
+    "typecheck:deno": "deno task --cwd packages/proteus check",
     "lint": "biome check .",
     "fix": "biome check --write .",
     "format": "biome format --write .",
     "clean": "rimraf node_modules packages/*/node_modules packages/*/dist",
-    "deploy:worker": "bun run --filter @quill/proteus deploy"
+    "dev:worker": "wrangler --cwd packages/proteus dev",
+    "deploy:worker": "wrangler --cwd packages/proteus deploy"
   },
   "devDependencies": {
     "@biomejs/biome": "latest",
     "@types/bun": "latest",
+    "@types/node": "latest",
     "rimraf": "latest"
   }
 }

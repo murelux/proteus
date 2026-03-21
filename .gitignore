@@ -27,9 +27,12 @@ build/
 
 # AI agent skills (local-only, installed via `bunx skills`)
 .agents/
+.jules/*
+!.jules/sentinel.md
 
 # OS
 Thumbs.db
 Desktop.ini
 
 *.test_results.txt
+coverage/

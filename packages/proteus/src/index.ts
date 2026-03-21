@@ -363,10 +363,24 @@ function buildParseResult<T>(
     const validated = callbacks.validate(sanitised, options.schema);
     if (validated instanceof Promise) {
       return validated.then((data) =>
-        makeSuccess<T>(data, extraction, format, excerpt, options?.extractAst ? ast : undefined, toc),
+        makeSuccess<T>(
+          data,
+          extraction,
+          format,
+          excerpt,
+          options?.extractAst ? ast : undefined,
+          toc,
+        ),
       );
     }
-    return makeSuccess<T>(validated, extraction, format, excerpt, options?.extractAst ? ast : undefined, toc);
+    return makeSuccess<T>(
+      validated,
+      extraction,
+      format,
+      excerpt,
+      options?.extractAst ? ast : undefined,
+      toc,
+    );
   }
 
   return makeSuccess<T>(
@@ -420,11 +434,24 @@ function parseFrontMatterCore<T = Record<string, unknown>>(
     if (rawOrPromise instanceof Promise) {
       return rawOrPromise
         .then(async (raw) => {
-          const { ast, toc } = await handleAstExtraction(extraction.content, options, callbacks, true);
+          const { ast, toc } = await handleAstExtraction(
+            extraction.content,
+            options,
+            callbacks,
+            true,
+          );
           return buildParseResult(raw, ast, toc, extraction, format, excerpt, options, callbacks);
         })
         .catch((err) =>
-          handleError(err, (options?.strict !== false), extraction, format, excerpt, undefined, undefined),
+          handleError(
+            err,
+            options?.strict !== false,
+            extraction,
+            format,
+            excerpt,
+            undefined,
+            undefined,
+          ),
         );
     }
 
@@ -446,12 +473,21 @@ function parseFrontMatterCore<T = Record<string, unknown>>(
       }
     }
 
-    const result = buildParseResult(rawOrPromise, astSync, tocSync, extraction, format, excerpt, options, callbacks);
+    const result = buildParseResult(
+      rawOrPromise,
+      astSync,
+      tocSync,
+      extraction,
+      format,
+      excerpt,
+      options,
+      callbacks,
+    );
     if (result instanceof Promise) {
       return result.catch((err) =>
         handleError(
           err,
-          (options?.strict !== false),
+          options?.strict !== false,
           extraction,
           format,
           excerpt,

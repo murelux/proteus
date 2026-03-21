@@ -17,10 +17,34 @@ Proteus deployed on Cloudflare Workers provides two core services:
 ### Basic Deployment
 
 ```bash
-wrangler deploy
+bun run deploy:worker
 ```
 
+The root-level `deploy:worker` script runs:
+
+```bash
+wrangler --cwd packages/proteus deploy
+```
+
+This is the recommended monorepo-safe entry point. It avoids Wrangler's workspace-root auto-detection issue and lets CI or Cloudflare Workers Builds deploy from the repository root without manually switching directories first.
+
 `packages/proteus/wrangler.json` only contains the Worker name, entry point, and compatibility settings. **All KV bindings and environment variables are managed through the Cloudflare Dashboard** — nothing is committed to the config file.
+
+### Monorepo / Dashboard Setup
+
+If you use **Cloudflare Workers Builds** with this repository connected directly:
+
+1. Leave the repository Root Directory at the repo root
+2. Set the **Build / Deploy command once** to:
+
+```bash
+bun run deploy:worker
+```
+
+You do **not** need to re-enter `packages/proteus` or `apps/proteus` on every deploy. The directory targeting is already encoded in the repo script via Wrangler's `--cwd` flag.
+
+> [!NOTE]
+> Wrangler config files do not define the Dashboard's Git Root Directory. In a monorepo, the practical code-based approach is to commit a root deploy script and have the Dashboard call that script.
 
 ---
 
@@ -37,7 +61,7 @@ The Worker uses dynamic namespace resolution: the namespace name in the URL auto
 | `pages` | `KV_PAGES` | Page data |
 | `blog-posts` | `KV_BLOG_POSTS` | Blog posts (hyphens become underscores) |
 
-Conversion rule: lowercase namespace name → uppercased with `KV_` prefix, hyphens `-` replaced by underscores `_`. 
+Conversion rule: lowercase namespace name → uppercased with `KV_` prefix, hyphens `-` replaced by underscores `_`.
 
 > [!TIP]
 > `KV_POSTS` is the recommended default for article content. The route `/posts/:slug` is built-in and always available if the binding is present.
@@ -110,7 +134,7 @@ Response:
 
 Constraints:
 - Maximum request body size: 1 MB
-- Accepted Content-Types: `text/*`, `application/json`, `application/x-www-form-urlencoded`
+- Accepted Content-Types: `text/*`, `application/json`
 - Automatic format detection for YAML / JSON / TOML
 
 ### GET /:namespace/:slug — Direct KV Lookup

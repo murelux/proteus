@@ -158,7 +158,7 @@ export function _preloadWasmModule(mod: WasmParsers): void {
  */
 async function readWasmFile(url: URL): Promise<ArrayBuffer> {
   // Deno
-  if (Deno !== undefined) {
+  if (typeof Deno !== "undefined") {
     const bytes = await Deno.readFile(url);
     return (bytes.buffer as ArrayBuffer).slice(
       bytes.byteOffset,
@@ -167,7 +167,7 @@ async function readWasmFile(url: URL): Promise<ArrayBuffer> {
   }
 
   // Bun
-  if (Bun !== undefined) {
+  if (typeof Bun !== "undefined") {
     return Bun.file(url).arrayBuffer();
   }
 

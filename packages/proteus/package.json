@@ -115,6 +115,7 @@
   "devDependencies": {
     "@biomejs/biome": "latest",
     "@types/bun": "latest",
+    "@types/node": "latest",
     "miniflare": "latest",
     "rimraf": "latest",
     "tinybench": "latest",

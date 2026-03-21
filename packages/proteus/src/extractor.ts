@@ -74,7 +74,9 @@ export function extractFrontMatter(
       ...new Set(delimiters.filter((d) => matchedOpens.has(d.open)).map((d) => d.close)),
     ];
     throw new ExtractionError(
-      `Unclosed front matter block: opening delimiter found but no closing delimiter (tried: ${closes.map((c) => '"' + c + '"').join(", ")}).`,
+      `Unclosed front matter block: opening delimiter found but no closing delimiter (tried: ${closes
+        .map((c) => `"${c}"`)
+        .join(", ")}).`,
     );
   }
 

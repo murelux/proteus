@@ -24,13 +24,13 @@ declare const Deno:
   | undefined;
 
 function getArgs(): string[] {
-  if (Bun !== undefined) return Bun.argv.slice(2);
-  if (Deno !== undefined) return Deno.args;
+  if (typeof Bun !== "undefined") return Bun.argv.slice(2);
+  if (typeof Deno !== "undefined") return Deno.args;
   throw new Error("Unsupported runtime — use Bun or Deno.");
 }
 
 function exit(code = 0): never {
-  if (Deno !== undefined) Deno.exit(code);
+  if (typeof Deno !== "undefined") Deno.exit(code);
   process.exit(code); // Bun supports process.exit
 }
 
@@ -191,7 +191,7 @@ async function readInput(path?: string): Promise<string> {
   }
 
   try {
-    if (Bun !== undefined) {
+    if (typeof Bun !== "undefined") {
       const file = Bun.file(path);
       // Bun.file().text() crashes the process on missing files instead of
       // rejecting the promise, so we must check existence first.
@@ -200,7 +200,7 @@ async function readInput(path?: string): Promise<string> {
       }
       return await file.text();
     }
-    if (Deno !== undefined) {
+    if (typeof Deno !== "undefined") {
       return await Deno.readTextFile(path);
     }
   } catch {

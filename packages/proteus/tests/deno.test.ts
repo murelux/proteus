@@ -5,8 +5,6 @@
  * Run with: deno test --allow-read --allow-write tests/deno.test.ts
  */
 
-import { assertEquals, assertExists } from "jsr:@std/assert";
-
 // Import from source (Deno can import TS directly)
 import {
   extractExcerpt,
@@ -19,6 +17,7 @@ import {
   stringifyFrontMatter,
   stringifyFrontMatterSync,
 } from "../src/index.ts";
+import { assertEquals, assertExists } from "./deno_assert.ts";
 
 // ---------------------------------------------------------------------------
 // Parse tests

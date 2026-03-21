@@ -184,10 +184,15 @@ This is a Monorepo. Run commands from the root using Bun:
 bun install
 bun run build:wasm    # Rebuild Rust WASM core
 bun test              # Run all tests (Core + Plugins)
+bun run test:worker   # Run Cloudflare Worker integration tests
 bun run test:deno     # Run Deno-specific tests
+bun run typecheck:deno # Run Deno type-checks from the monorepo root
+bun run deploy:worker # Deploy the Cloudflare Worker from the monorepo root
 ```
 
-For the complete guide — WASM build, linting, project structure, and per-runtime test details — see [doc/development.md](doc/development.md).
+For the complete guide — WASM build, linting, project structure, monorepo Worker deployment, and dependency-security notes — see [doc/development.md](doc/development.md).
+
+Use the package directories only for package-specific debugging or publishing workflows.
 
 ## License
 

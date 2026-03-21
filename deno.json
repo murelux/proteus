@@ -1,0 +1,5 @@
+{
+  "workspace": ["packages/proteus"],
+  "nodeModulesDir": "manual",
+  "unstable": ["sloppy-imports"]
+}

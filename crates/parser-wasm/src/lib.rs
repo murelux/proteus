@@ -89,7 +89,7 @@ fn check_yaml_alias_limit(input: &str) -> Result<(), JsError> {
 pub fn parse_yaml(input: &str) -> Result<JsValue, JsError> {
     check_input_size(input)?;
     check_yaml_alias_limit(input)?;
-    
+
     let value: serde_json::Value = serde_saphyr::from_str(input).map_err(|e| {
         // serde-saphyr errors include location info in the Display output
         JsError::new(&format!("YAML parse error: {e}"))
