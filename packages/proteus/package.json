@@ -78,7 +78,7 @@
   "scripts": {
     "build": "bun run build:js",
     "build:js": "echo 'JS build step - WASM is pre-built'",
-    "build:wasm": "wasm-pack build ../../crates/parser-wasm --target bundler --out-dir ../../packages/proteus/pkg --release",
+    "build:wasm": "rimraf pkg && wasm-pack build ../../crates/parser-wasm --target bundler --out-dir ../../packages/proteus/pkg --out-name proteus_wasm --release",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "vitest run",

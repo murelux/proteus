@@ -1,6 +1,6 @@
 // @ts-expect-error: no type declarations for generated _bg.js
-import * as bgModule from "../pkg/matter_wasm_bg.js";
-import wasmBinary from "../pkg/matter_wasm_bg.wasm";
+import * as bgModule from "../pkg/proteus_wasm_bg.js";
+import wasmBinary from "../pkg/proteus_wasm_bg.wasm";
 import { sanitizeErrorMessage } from "../src/error-utils.js";
 import { parseFrontMatter } from "../src/index.js";
 import { readStreamToString } from "../src/stream-utils.js";
@@ -33,7 +33,7 @@ type Env = WorkerEnv;
  */
 const ready = (async () => {
   const instance = await WebAssembly.instantiate(wasmBinary, {
-    "./matter_wasm_bg.js": bgModule,
+    "./proteus_wasm_bg.js": bgModule,
   });
 
   // Wire the raw WASM exports into the JS glue layer.

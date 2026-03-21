@@ -2,7 +2,7 @@
  * Lazy WASM module loader.
  *
  * Supports two loading modes:
- *  1. **Bundler** (Vitest, Vite, Cloudflare Workers) — `import("../pkg/matter_wasm.js")`
+ *  1. **Bundler** (Vitest, Vite, Cloudflare Workers) — `import("../pkg/proteus_wasm.js")`
  *  2. **Direct** (Bun, Deno) — manually instantiate the WASM binary
  *
  * The module is loaded once and cached for subsequent calls.
@@ -216,7 +216,7 @@ async function loadWasm(): Promise<WasmParsers> {
 async function loadWasmInner(): Promise<WasmParsers> {
   try {
     // Bundler-friendly import (works in Vitest, Vite, Cloudflare Workers, etc.)
-    const mod = await import("../pkg/matter_wasm.js");
+    const mod = await import("../pkg/proteus_wasm.js");
     validateWasmModule(mod);
     wasmModule = mod;
     return mod;
@@ -226,7 +226,7 @@ async function loadWasmInner(): Promise<WasmParsers> {
       return await loadWasmDirect();
     } catch (directErr) {
       const hint =
-        "Ensure the WASM binary exists at pkg/matter_wasm_bg.wasm " +
+        "Ensure the WASM binary exists at pkg/proteus_wasm_bg.wasm " +
         "and was built with `bun run build:wasm`. " +
         "If running under a bundler, check that vite-plugin-wasm (or equivalent) is configured.";
       throw new TypeError(`Failed to load WASM module via both bundler and direct paths. ${hint}`, {
@@ -237,13 +237,13 @@ async function loadWasmInner(): Promise<WasmParsers> {
 }
 
 async function loadWasmDirect(): Promise<WasmParsers> {
-  const bgModule = await import("../pkg/matter_wasm_bg.js");
+  const bgModule = await import("../pkg/proteus_wasm_bg.js");
 
   // Resolve the .wasm path using web-standard `URL` constructor.
   // Works in Bun, Deno, and any environment with `import.meta.url`.
   let wasmUrl: URL;
   try {
-    wasmUrl = new URL("../pkg/matter_wasm_bg.wasm", import.meta.url);
+    wasmUrl = new URL("../pkg/proteus_wasm_bg.wasm", import.meta.url);
   } catch (err) {
     throw new TypeError(
       "Failed to resolve WASM binary path: `import.meta.url` may not be available in this runtime.",
@@ -262,7 +262,7 @@ async function loadWasmDirect(): Promise<WasmParsers> {
   }
 
   const wasmImports = {
-    "./matter_wasm_bg.js": bgModule,
+    "./proteus_wasm_bg.js": bgModule,
   };
 
   const { instance } = await WebAssembly.instantiate(wasmBytes, wasmImports);

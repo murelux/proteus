@@ -92,6 +92,12 @@ jobs:
       - name: Build WASM
         run: bun run build:wasm
 
+      - name: Verify WASM artifact contents
+        run: |
+          test -f packages/proteus/pkg/proteus_wasm.js
+          test -f packages/proteus/pkg/proteus_wasm_bg.js
+          test -f packages/proteus/pkg/proteus_wasm_bg.wasm
+
       - name: Remove wasm-pack generated .gitignore
         run: rm -f packages/proteus/pkg/.gitignore
 

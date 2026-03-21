@@ -275,6 +275,36 @@ interface ParseCallbacks<T> {
   validate: (data: unknown, schema: AnySchema) => T | Promise<T>;
 }
 
+function withAstExcerpt(ast: ProteusAST | undefined, content: string): ProteusAST | undefined {
+  if (!ast || typeof ast.excerpt === "string") {
+    return ast;
+  }
+
+  return {
+    ...ast,
+    excerpt: extractAstExcerpt(content),
+  };
+}
+
+function extractAstExcerpt(content: string): string | undefined {
+  const excerpt = extractExcerpt(content, true);
+  if (!excerpt) {
+    return undefined;
+  }
+
+  return excerpt
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/`([^`]+)`/g, " $1 ")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/~~([^~]+)~~/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /**
  * Helper to handle empty front matter extraction.
  */
@@ -297,7 +327,8 @@ function handleEmptyFrontMatter<T>(
       const wasm = callbacks.getWasm();
       if (!(wasm instanceof Promise)) {
         ast = wasm.extract_markdown_ast(body) as ProteusAST;
-        if (options?.extractToc && ast.headings) {
+        ast = withAstExcerpt(ast, body);
+        if (options?.extractToc && ast?.headings) {
           toc = generateTOC(ast.headings);
         }
       }
@@ -333,9 +364,9 @@ async function handleAstExtraction<T>(
     const wasm = isAsync ? await callbacks.getWasm() : callbacks.getWasm();
     if (wasm instanceof Promise) return { ast: undefined, toc: undefined };
 
-    const ast = wasm.extract_markdown_ast(content) as ProteusAST;
+    const ast = withAstExcerpt(wasm.extract_markdown_ast(content) as ProteusAST, content);
     let toc: TocNode[] | undefined;
-    if (options?.extractToc && ast.headings) {
+    if (options?.extractToc && ast?.headings) {
       toc = generateTOC(ast.headings);
     }
     return { ast, toc };
@@ -463,8 +494,11 @@ function parseFrontMatterCore<T = Record<string, unknown>>(
       try {
         const wasm = callbacks.getWasm();
         if (!(wasm instanceof Promise)) {
-          astSync = wasm.extract_markdown_ast(extraction.content) as ProteusAST;
-          if (options?.extractToc && astSync.headings) {
+          astSync = withAstExcerpt(
+            wasm.extract_markdown_ast(extraction.content) as ProteusAST,
+            extraction.content,
+          );
+          if (options?.extractToc && astSync?.headings) {
             tocSync = generateTOC(astSync.headings);
           }
         }
